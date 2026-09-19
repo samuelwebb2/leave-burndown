@@ -1,3 +1,4 @@
+import re
 from datetime import date
 from typing import TYPE_CHECKING
 
@@ -52,6 +53,13 @@ def add(
 
 def page(client: FlaskClient, url: str = "/") -> str:
     return client.get(url).get_data(as_text=True)
+
+
+def is_open(html: str, section: str) -> bool:
+    """Whether the collapsible section with this id is expanded."""
+    tag = re.search(rf'<details\b[^>]*\bid="{section}"[^>]*>', html)
+    assert tag, f"no <details> with id {section!r}"
+    return "open" in tag.group().replace(">", " ").split()
 
 
 def test_half_days_at_either_end_are_saved_and_cost_half(
@@ -135,14 +143,14 @@ def test_page_opens_on_the_chart_with_everything_else_collapsed(
 ) -> None:
     html = page(client)
     for section in ("leave", "months", "bank-holidays", "settings"):
-        assert f'<details class="sect" id="{section}" >' in html, section
+        assert not is_open(html, section), section
     assert "used by Christmas" not in html  # the tile is gone
 
 
 def test_open_parameter_expands_that_section_only(client: FlaskClient) -> None:
     html = page(client, "/?open=leave")
-    assert '<details class="sect" id="leave" open>' in html
-    assert '<details class="sect" id="settings" >' in html
+    assert is_open(html, "leave")
+    assert not is_open(html, "settings")
 
 
 def test_actions_reopen_the_section_they_came_from(
