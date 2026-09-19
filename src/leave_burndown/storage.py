@@ -17,7 +17,7 @@ DEFAULT_SETTINGS = {
 EXAMPLE_ENTRIES = [
     {
         "id": "example",
-        "label": "Halloween stay (example)",
+        "label": "Bike packing adventure (example)",
         "start": "2026-10-29",
         "end": "2026-11-03",
         "days": None,
