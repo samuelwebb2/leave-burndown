@@ -132,7 +132,12 @@ def test_allowance_is_broken_down_into_its_parts(client, path):
     client.post(f"/flex/{GOOD_FRIDAY}")
 
     html = page(client)
-    for part in ("<b>26</b> base", "<b>5</b> bought", "<b>3</b> carried over", "<b>1</b> flexed"):
+    for part in (
+        "<b>26</b> base",
+        "<b>5</b> bought",
+        "<b>3</b> carried over",
+        "<b>1</b> flexed",
+    ):
         assert part in html, part
     assert "<b>35</b><span>days this year" in html  # 26 + 5 + 3 + 1 flexed
 

@@ -33,7 +33,9 @@ class Layout:
 
 
 WIDE = Layout("wide", 840, 400, 44, 26, 26, 44, max_ticks=8, month_every=1, font=12)
-COMPACT = Layout("compact", 360, 400, 30, 14, 24, 32, max_ticks=5, month_every=2, font=11)
+COMPACT = Layout(
+    "compact", 360, 400, 30, 14, 24, 32, max_ticks=5, month_every=2, font=11
+)
 
 
 def tick_step(top: float, max_ticks: int) -> int:
@@ -69,7 +71,7 @@ def _render(p: Plan, lay: Layout) -> str:
         flip = x + 5 + width > W - R
         return (
             f'<text class="axis{" strong" if strong else ""}" x="{x - 5 if flip else x + 5:.1f}" y="{y:.1f}"'
-            f'{' text-anchor="end"' if flip else ""}>{text}</text>'
+            f"{' text-anchor="end"' if flip else ''}>{text}</text>"
         )
 
     # horizontal grid + y labels
@@ -94,7 +96,9 @@ def _render(p: Plan, lay: Layout) -> str:
             if lay.month_every == 1 and (ms == p.start or ms.month == 1)
             else f"{ms:%b}"
         )
-        out.append(f'<text class="axis" x="{X(k) + 4:.1f}" y="{H - B // 2 + 4}">{text}</text>')
+        out.append(
+            f'<text class="axis" x="{X(k) + 4:.1f}" y="{H - B // 2 + 4}">{text}</text>'
+        )
 
     # tolerance band around the even pace
     if p.tol_days > 0 and p.total > 0:

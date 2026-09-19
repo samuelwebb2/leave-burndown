@@ -11,8 +11,7 @@ def make_data(entries=(), flexed=(), **settings):
     return {
         "settings": {**DEFAULT_SETTINGS, **settings},
         "entries": [
-            {"id": str(i), "status": "tentative", **e}
-            for i, e in enumerate(entries)
+            {"id": str(i), "status": "tentative", **e} for i, e in enumerate(entries)
         ],
         "flexed_holidays": list(flexed),
     }
@@ -32,7 +31,9 @@ def test_weekends_and_bank_holidays_dont_use_leave():
 
 
 def test_bank_holidays_count_when_setting_is_off():
-    p = compute(make_data([entry("2026-12-24", "2026-12-29")], skip_bank_holidays=False))
+    p = compute(
+        make_data([entry("2026-12-24", "2026-12-29")], skip_bank_holidays=False)
+    )
     assert p.entries[0]["days_total"] == 4  # Thu, Fri, Mon, Tue
 
 
@@ -60,7 +61,11 @@ def test_half_day_on_the_last_day_only():
 
 
 def test_a_single_half_day_costs_half_however_it_is_flagged():
-    for flags in ({"half_start": True}, {"half_end": True}, {"half_start": True, "half_end": True}):
+    for flags in (
+        {"half_start": True},
+        {"half_end": True},
+        {"half_start": True, "half_end": True},
+    ):
         p = compute(make_data([entry("2026-10-06", "2026-10-06", **flags)]))
         assert p.entries[0]["days_total"] == 0.5, flags
 
@@ -71,7 +76,6 @@ def test_half_day_on_a_non_working_end_changes_nothing():
     assert p.entries[0]["days_total"] == 1
     saturday = compute(make_data([entry("2026-10-10", "2026-10-10", half_start=True)]))
     assert saturday.entries[0]["days_total"] == 0
-
 
 
 def test_booked_and_tentative_are_tracked_separately():
@@ -112,7 +116,9 @@ def test_fixed_holidays_cant_be_flexed_and_flexing_needs_bank_holidays_to_be_fre
 
 
 def test_entry_outside_the_leave_year_is_flagged_and_not_counted():
-    p = compute(make_data([entry("2027-08-30", "2027-09-03")]))  # 30 Aug is a bank holiday
+    p = compute(
+        make_data([entry("2027-08-30", "2027-09-03")])
+    )  # 30 Aug is a bank holiday
     e = p.entries[0]
     assert e["days_total"] == 4  # Tue 31 Aug - Fri 3 Sep... Mon is the bank holiday
     assert e["days_in_year"] == 1  # only 31 Aug falls in the year

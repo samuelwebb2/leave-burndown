@@ -77,7 +77,9 @@ def compute(data: dict) -> Plan:
     # leave that spans it uses a day. `non_working` covers every known bank
     # holiday, not just this year's, so entries outside the year still count right.
     flexed_all = flexed_dates(data)
-    non_working = frozenset(BANK_HOLIDAYS if s["skip_bank_holidays"] else ()) - flexed_all
+    non_working = (
+        frozenset(BANK_HOLIDAYS if s["skip_bank_holidays"] else ()) - flexed_all
+    )
     flexed = frozenset(h.date for h in holidays if h.date in flexed_all)
     total = s["base_days"] + s["extra_days"] + s["carried_days"] + len(flexed)
 
@@ -107,7 +109,8 @@ def compute(data: dict) -> Plan:
         e["days_in_year"] = in_year
         e["outside"] = abs(in_year - e["days_total"]) > 1e-9
         e["flexed_names"] = [
-            BANK_HOLIDAYS[d].name for d in sorted(flexed_all)
+            BANK_HOLIDAYS[d].name
+            for d in sorted(flexed_all)
             if e["start_d"] <= d <= e["end_d"]
         ]
         entries.append(e)

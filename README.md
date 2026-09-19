@@ -8,6 +8,9 @@ Annual leave planner and burn-down chart. The leave year runs 1 Sep to 31 Aug.
 uv sync
 LEAVE_DEBUG=1 uv run leave-burndown   # http://127.0.0.1:5050, debug is opt-in
 uv run pytest                        # unit tests
+uv run ruff check                  # lint
+uv run ruff format                 # format
+uv run ty check                    # type check
 ```
 
 Data is stored in `leave_data.json` in the working directory, or wherever `LEAVE_DATA` points.

@@ -115,7 +115,7 @@ def create_app(data_file: str | os.PathLike | None = None) -> Flask:
             if not 0 <= tol <= 50:
                 raise ValueError
             s["tolerance_pct"] = tol
-        except (KeyError, ValueError):
+        except KeyError, ValueError:
             flash(
                 "Those settings weren't valid. Use a real date, days of 0 or more, and a tolerance of 0-50%."
             )
@@ -158,7 +158,7 @@ def create_app(data_file: str | os.PathLike | None = None) -> Flask:
         data = storage.load(path)
         try:
             holiday = BANK_HOLIDAYS[date.fromisoformat(iso)]
-        except (ValueError, KeyError):
+        except ValueError, KeyError:
             abort(404)
         if not holiday.flexible:
             flash(f"{holiday.name} is a fixed bank holiday and can't be flexed.")
@@ -167,8 +167,12 @@ def create_app(data_file: str | os.PathLike | None = None) -> Flask:
         else:
             day = holiday.date.isoformat()
             flexed = set(data["flexed_holidays"])
-            booked = next((e for e in data["entries"] if e["start"] <= day <= e["end"]), None)
-            if day not in flexed and booked:  # flexing means working it, so it can't be leave
+            booked = next(
+                (e for e in data["entries"] if e["start"] <= day <= e["end"]), None
+            )
+            if (
+                day not in flexed and booked
+            ):  # flexing means working it, so it can't be leave
                 flash(
                     f"Can't flex {holiday.name}: it falls inside your leave \u201c{booked['label']}\u201d "
                     f"({fmt_date(date.fromisoformat(booked['start']))} to "
