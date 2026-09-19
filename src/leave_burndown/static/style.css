@@ -2,13 +2,15 @@
   --bg:#f3f5f8; --ink:#141c2b; --muted:#5d6675; --line:#d9dee6; --panel:#fbfcfd;
   --accent:#2340c9; --tent:#b36200; --warn:#b3261e; --slow:#5d6675;
   --band:rgba(35,64,201,.09); --blk:rgba(35,64,201,.12);
+  --flex:#0f766e; --flexbg:rgba(15,118,110,.10);
   --serif:"Instrument Serif",Georgia,"Times New Roman",serif;
   --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
 }
 @media (prefers-color-scheme:dark){
   :root{ --bg:#0d131c; --ink:#e6ebf3; --muted:#8f9aac; --line:#243041; --panel:#121a26;
     --accent:#8ea4ff; --tent:#ffb347; --warn:#ff8a80; --slow:#8f9aac;
-    --band:rgba(142,164,255,.10); --blk:rgba(142,164,255,.16); }
+    --band:rgba(142,164,255,.10); --blk:rgba(142,164,255,.16);
+    --flex:#5eead4; --flexbg:rgba(94,234,212,.12); }
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--sans)}
@@ -81,3 +83,8 @@ form.settings{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1f
 .empty{color:var(--muted);padding:14px 0}
 form.add .actions{align-self:end;display:flex;gap:14px;align-items:center}
 tr.editing td{background:var(--band)}
+.chart .blk-flex{fill:var(--flex);opacity:.55}
+.legend i.sw.flex{background:var(--flex);opacity:.55;outline:0}
+.pill.flexed{color:var(--flex)}
+tr.flexed td{background:var(--flexbg)}
+.muted{color:var(--muted);font-size:13px}

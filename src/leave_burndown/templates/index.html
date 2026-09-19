@@ -18,7 +18,7 @@
   {% for w in warnings %}<div class="flash">{{ w }}</div>{% endfor %}
 
   <section class="figures">
-    <div class="fig"><b>{{ '%g' % p.total }}</b><span>days this year</span></div>
+    <div class="fig"><b>{{ '%g' % p.total }}</b><span>days this year{% if p.flexed %}<br>incl. {{ p.flexed|length }} flexed{% endif %}</span></div>
     <div class="fig"><b>{{ '%g' % booked }}</b><span>booked</span></div>
     <div class="fig"><b>{{ '%g' % tentative }}</b><span>tentative</span></div>
     <div class="fig {{ 'bad' if unplanned < 0 }}"><b>{{ '%g' % unplanned }}</b><span>still unplanned</span></div>
@@ -32,6 +32,7 @@
       {% if tentative %}<span><i style="border-color:var(--accent);border-top-style:dotted"></i>Booked only</span>{% endif %}
       <span><i style="border-color:var(--muted);border-top-style:dashed"></i>Even pace</span>
       <span><i class="sw"></i>Within {{ '%g' % s.tolerance_pct }}% of even pace</span>
+      {% if p.flexed %}<span><i class="sw flex"></i>Flexed bank holiday (working day)</span>{% endif %}
     </div>
   </div>
 
@@ -44,7 +45,7 @@
         <tbody>
         {% for e in p.entries %}
           <tr{{ ' class=editing' if editing and editing.id == e.id }}>
-            <td>{{ e.label }}<small>{{ fd(e.start_d) }}{% if e.end_d != e.start_d %} to {{ fd(e.end_d) }}{% endif %}{% if e.outside %} &middot; partly outside this leave year{% endif %}</small></td>
+            <td>{{ e.label }}<small>{{ fd(e.start_d) }}{% if e.end_d != e.start_d %} to {{ fd(e.end_d) }}{% endif %}{% if e.outside %} &middot; partly outside this leave year{% endif %}{% if e.flexed_names %} &middot; includes flexed {{ e.flexed_names|join(', ') }}, so it uses leave{% endif %}</small></td>
             <td class="n">{{ '%g' % e.days_total }}</td>
             <td><form method="post" action="{{ url_for('toggle', eid=e.id) }}"><button class="pill {{ e.status }}" title="Switch between booked and tentative">{{ e.status }}</button></form></td>
             <td class="n"><a class="link" href="{{ url_for('index', edit=e.id) }}#entry-form">Edit</a></td>
@@ -88,6 +89,29 @@
         {% endfor %}
         </tbody>
       </table>
+    </section>
+
+    <section id="bank-holidays">
+      <h2>Bank holidays</h2>
+      <table>
+        <thead><tr><th>Day</th><th>Bank holiday</th><th></th></tr></thead>
+        <tbody>
+        {% for h in p.holidays %}
+          {% set flexed = h.date in p.flexed %}
+          <tr{{ ' class=flexed' if flexed }}>
+            <td>{{ fd(h.date) }}</td>
+            <td>{{ h.name }}</td>
+            <td class="n">
+            {% if not h.flexible %}<span class="muted">fixed</span>
+            {% elif not s.skip_bank_holidays %}<span class="muted">uses leave</span>
+            {% else %}<form method="post" action="{{ url_for('flex', iso=h.date.isoformat()) }}"><button class="pill {{ 'flexed' if flexed }}" title="{{ 'Stop flexing: take it as a bank holiday again' if flexed else 'Work this day and gain a day of leave' }}">{{ 'flexed &middot; working'|safe if flexed else 'flex' }}</button></form>
+            {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      <p class="hint">Flexing a bank holiday means working it: you gain a day of leave, and leave that spans it uses a day. Christmas Day, Boxing Day and New Year's Day are fixed.</p>
     </section>
   </div>
 

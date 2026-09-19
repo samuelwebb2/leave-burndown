@@ -7,7 +7,7 @@ from datetime import date
 from pathlib import Path
 from uuid import uuid4
 
-from flask import Flask, flash, redirect, render_template, request, url_for
+from flask import Flask, abort, flash, redirect, render_template, request, url_for
 
 from . import storage
 from .chart import build_chart
@@ -98,8 +98,7 @@ def create_app(data_file: str | os.PathLike | None = None) -> Flask:
             fd=fmt_date,
             open_settings=request.args.get("settings") == "1",
             js_config={
-                "bankHolidays": sorted(d.isoformat() for d in BANK_HOLIDAYS),
-                "skipBankHolidays": s["skip_bank_holidays"],
+                "bankHolidays": sorted(d.isoformat() for d in p.non_working),
             },
             **summarise(p),
         )
@@ -156,6 +155,24 @@ def create_app(data_file: str | os.PathLike | None = None) -> Flask:
         else:
             flash("That leave entry no longer exists.")
         return redirect(url_for("index"))
+
+    @app.post("/flex/<iso>")
+    def flex(iso):
+        data = storage.load(path)
+        try:
+            holiday = BANK_HOLIDAYS[date.fromisoformat(iso)]
+        except (ValueError, KeyError):
+            abort(404)
+        if not holiday.flexible:
+            flash(f"{holiday.name} is a fixed bank holiday and can't be flexed.")
+        elif not data["settings"]["skip_bank_holidays"]:
+            flash("Bank holidays are set to use leave, so there is nothing to flex.")
+        else:
+            flexed = set(data["flexed_holidays"])
+            flexed ^= {holiday.date.isoformat()}  # toggle
+            data["flexed_holidays"] = sorted(flexed)
+            storage.save(path, data)
+        return redirect(url_for("index") + "#bank-holidays")
 
     @app.post("/toggle/<eid>")
     def toggle(eid):

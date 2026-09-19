@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from .holidays import BANK_HOLIDAYS
+from .holidays import BANK_HOLIDAYS, BankHoliday
 
 
 def year_end(start: date) -> date:
@@ -21,12 +22,9 @@ def daterange(a: date, b: date):
         yield a + timedelta(days=i)
 
 
-def working_days(a: date, b: date, skip_bh: bool) -> list[date]:
-    return [
-        d
-        for d in daterange(a, b)
-        if d.weekday() < 5 and not (skip_bh and d in BANK_HOLIDAYS)
-    ]
+def working_days(a: date, b: date, non_working: Collection[date]) -> list[date]:
+    """Weekdays in a..b that use leave, i.e. not in `non_working`."""
+    return [d for d in daterange(a, b) if d.weekday() < 5 and d not in non_working]
 
 
 @dataclass
@@ -41,6 +39,9 @@ class Plan:
     used_booked: list[float]
     rem_all: list[float]  # remaining at the start of day k (length n + 1)
     rem_booked: list[float]
+    holidays: list[BankHoliday]  # bank holidays in this leave year
+    flexed: frozenset[date]  # flexed bank holidays in this year: worked, not days off
+    non_working: frozenset[date]  # bank holidays that do not use leave
 
     def ideal(self, k: float) -> float:
         return self.total * (1 - k / self.n)
@@ -54,8 +55,21 @@ def compute(data: dict) -> Plan:
     start = date.fromisoformat(s["year_start"])
     end = year_end(start)
     n = (end - start).days + 1
-    total = s["base_days"] + s["extra_days"] + s["carried_days"]
+    holidays = [h for d, h in sorted(BANK_HOLIDAYS.items()) if start <= d <= end]
+
+    # Flexing only means something when bank holidays normally cost no leave.
+    # A flexed holiday is a working day: it adds a day to the allowance, and
+    # leave that spans it uses a day. `non_working` covers every known bank
+    # holiday, not just this year's, so entries outside the year still count right.
     skip = s["skip_bank_holidays"]
+    flexed_all = {
+        d
+        for d in map(date.fromisoformat, data.get("flexed_holidays", []))
+        if skip and d in BANK_HOLIDAYS and BANK_HOLIDAYS[d].flexible
+    }
+    non_working = frozenset(BANK_HOLIDAYS if skip else ()) - flexed_all
+    flexed = frozenset(h.date for h in holidays if h.date in flexed_all)
+    total = s["base_days"] + s["extra_days"] + s["carried_days"] + len(flexed)
 
     used_all, used_booked = [0.0] * n, [0.0] * n
     entries = []
@@ -65,7 +79,7 @@ def compute(data: dict) -> Plan:
             date.fromisoformat(e["start"]),
             date.fromisoformat(e["end"]),
         )
-        wd = working_days(e["start_d"], e["end_d"], skip)
+        wd = working_days(e["start_d"], e["end_d"], non_working)
         e["days_total"] = (
             float(e["days"]) if e.get("days") is not None else float(len(wd))
         )
@@ -84,6 +98,10 @@ def compute(data: dict) -> Plan:
                 in_year += amount
         e["days_in_year"] = in_year
         e["outside"] = abs(in_year - e["days_total"]) > 1e-9
+        e["flexed_names"] = [
+            BANK_HOLIDAYS[d].name for d in sorted(flexed_all)
+            if e["start_d"] <= d <= e["end_d"]
+        ]
         entries.append(e)
     entries.sort(key=lambda e: (e["start_d"], e["end_d"]))
 
@@ -104,6 +122,9 @@ def compute(data: dict) -> Plan:
         used_booked=used_booked,
         rem_all=cumulative(used_all),
         rem_booked=cumulative(used_booked),
+        holidays=holidays,
+        flexed=flexed,
+        non_working=non_working,
     )
 
 

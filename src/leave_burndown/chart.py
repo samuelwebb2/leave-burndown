@@ -8,6 +8,7 @@ from datetime import date
 from markupsafe import Markup, escape
 
 from .formatting import fmt_date
+from .holidays import BANK_HOLIDAYS
 from .plan import Plan, christmas_k, month_starts
 
 
@@ -96,6 +97,14 @@ def build_chart(p: Plan) -> Markup:
             )
         )
         out.append(fill)
+
+    # flexed bank holidays: working days, so they must not be mistaken for days off
+    for d in sorted(p.flexed):
+        x = X(p.idx(d))
+        out.append(
+            f'<rect class="blk-flex" x="{x:.1f}" y="{T}" width="{max(X(p.idx(d) + 1) - x, 3):.1f}" height="{ph}">'
+            f"<title>{escape(BANK_HOLIDAYS[d].name)}: {fmt_date(d)} (flexed, working day)</title></rect>"
+        )
 
     # even pace
     out.append(

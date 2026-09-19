@@ -33,6 +33,11 @@ self:
     )
     machine.succeed("grep -q '\"label\": \"Test\"' /var/lib/private/leave-burndown/leave_data.json")
 
+    # Flexing a bank holiday adds a day of leave and is persisted.
+    machine.succeed("curl -sf -o /dev/null -X POST http://127.0.0.1:5050/flex/2027-03-26")
+    machine.succeed("grep -q 2027-03-26 /var/lib/private/leave-burndown/leave_data.json")
+    machine.succeed("curl -sf http://127.0.0.1:5050/ | grep -q 'incl. 1 flexed'")
+
     # Data survives a restart, and debug mode is off.
     machine.systemctl("restart leave-burndown.service")
     machine.wait_for_open_port(5050)

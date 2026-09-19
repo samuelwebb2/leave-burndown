@@ -33,6 +33,7 @@ def load(path: Path) -> dict:
         data = {"entries": [dict(e) for e in EXAMPLE_ENTRIES]}
     data["settings"] = {**DEFAULT_SETTINGS, **data.get("settings", {})}
     data.setdefault("entries", [])
+    data.setdefault("flexed_holidays", [])  # ISO dates of flexed bank holidays
     return data
 
 
