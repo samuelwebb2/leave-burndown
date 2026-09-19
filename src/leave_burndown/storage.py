@@ -71,7 +71,7 @@ EXAMPLE_ENTRIES: list[Entry] = [
 
 
 def load(path: Path) -> LeaveData:
-    """Read the data file, filling in defaults. A missing file gives the example entry."""
+    """Read the data file, with defaults filled in (or the example if missing)."""
     # JSON is untyped by nature, so this is the one place `Any` is accepted.
     raw: dict[str, Any] = (  # pyright: ignore[reportExplicitAny]
         json.loads(path.read_text())

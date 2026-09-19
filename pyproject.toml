@@ -35,10 +35,3 @@ all = "error"
 # rules, unused arguments, return simplification, timezone-aware dates, and
 # annotations on every function.
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "C4", "RUF", "PIE", "RET", "ARG", "ANN", "TC", "DTZ"]
-# The formatter owns line length; the long SVG f-strings in chart.py can't be wrapped.
-ignore = ["E501"]
-
-[tool.basedpyright]
-# Long messages are wrapped as adjacent string literals, which is what the formatter
-# and ruff expect; this rule would have them joined with `+` instead.
-reportImplicitStringConcatenation = false

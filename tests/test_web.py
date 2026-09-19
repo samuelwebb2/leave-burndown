@@ -1,5 +1,5 @@
 # pyright: reportUnusedCallResult=false
-# (posting to a route and only checking the outcome afterwards is the point of most tests)
+# (most tests post to a route and check the outcome afterwards, not the response)
 import json
 from typing import TYPE_CHECKING
 

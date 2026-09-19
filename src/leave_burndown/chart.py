@@ -50,6 +50,21 @@ def tick_step(top: float, max_ticks: int) -> int:
     return 100
 
 
+def _text(value: float | str) -> str:
+    """An attribute value: floats print to one decimal place, as SVG wants."""
+    return f"{value:.1f}" if isinstance(value, float) else str(escape(value))
+
+
+def el(tag: str, content: str | None = None, /, **attrs: float | str) -> str:
+    """An SVG element. A trailing `_` is dropped from names (`class_`) and any other
+    `_` becomes `-` (`text_anchor`)."""
+    shown = "".join(
+        f' {name.rstrip("_").replace("_", "-")}="{_text(value)}"'
+        for name, value in attrs.items()
+    )
+    return f"<{tag}{shown}/>" if content is None else f"<{tag}{shown}>{content}</{tag}>"
+
+
 def _render(p: Plan, lay: Layout, today: date) -> str:
     W, H, L, R, T, B = lay.W, lay.H, lay.L, lay.R, lay.T, lay.B
     pw, ph = W - L - R, H - T - B
@@ -69,38 +84,59 @@ def _render(p: Plan, lay: Layout, today: date) -> str:
     def pt(k: float, v: float) -> str:
         return f"{X(k):.1f},{Y(v):.1f}"
 
+    def vline(x: float, class_: str) -> str:
+        return el("line", class_=class_, x1=x, x2=x, y1=T, y2=T + ph)
+
     hatch = f"hatch-{lay.name}"  # unique per drawing: both live in the same page
-    out: list[str] = []
-
-    out.append(
-        f'<defs><pattern id="{hatch}" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">'
-        '<line class="hatch-line" x1="0" y1="0" x2="0" y2="6"/></pattern></defs>'
-    )
-
-    def label(x: float, y: float, text: str, strong: bool = False) -> str:
-        """Text at x, flipped to the left of x if it would run off the right edge."""
-        width = len(text) * lay.font * 0.6
-        flip = x + 5 + width > W - R
-        return (
-            f'<text class="axis{" strong" if strong else ""}" x="{x - 5 if flip else x + 5:.1f}" y="{y:.1f}"'
-            f"{' text-anchor="end"' if flip else ''}>{text}</text>"
+    stripe = el("line", class_="hatch-line", x1=0, y1=0, x2=0, y2=6)
+    out: list[str] = [
+        el(
+            "defs",
+            el(
+                "pattern",
+                stripe,
+                id=hatch,
+                width=6,
+                height=6,
+                patternUnits="userSpaceOnUse",
+                patternTransform="rotate(45)",
+            ),
         )
+    ]
+
+    def label(x: float, y: float, text: str, *, strong: bool = False) -> str:
+        """Text at x, flipped to the left of x if it would run off the right edge."""
+        flip = x + 5 + len(text) * lay.font * 0.6 > W - R
+        attrs: dict[str, float | str] = {
+            "class_": "axis strong" if strong else "axis",
+            "x": x - 5 if flip else x + 5,
+            "y": float(y),
+        }
+        if flip:
+            attrs["text_anchor"] = "end"
+        return el("text", text, **attrs)
 
     # horizontal grid + y labels
     for v in range(int(ymin), int(ymax) + 1, step):
+        zero = v == 0 and ymin < 0
         out.append(
-            f'<line class="grid{" zero" if v == 0 and ymin < 0 else ""}" x1="{L}" x2="{W - R}" y1="{Y(v):.1f}" y2="{Y(v):.1f}"/>'
+            el(
+                "line",
+                class_="grid zero" if zero else "grid",
+                x1=L,
+                x2=W - R,
+                y1=Y(v),
+                y2=Y(v),
+            )
         )
         out.append(
-            f'<text class="axis" x="{L - 6}" y="{Y(v) + 4:.1f}" text-anchor="end">{v}</text>'
+            el("text", str(v), class_="axis", x=L - 6, y=Y(v) + 4, text_anchor="end")
         )
 
     # month lines + labels
     for i, ms in enumerate(month_starts(p)):
         k = p.idx(ms)
-        out.append(
-            f'<line class="grid faint" x1="{X(k):.1f}" x2="{X(k):.1f}" y1="{T}" y2="{T + ph}"/>'
-        )
+        out.append(vline(X(k), "grid faint"))
         if i % lay.month_every:
             continue
         text = (
@@ -108,9 +144,7 @@ def _render(p: Plan, lay: Layout, today: date) -> str:
             if lay.month_every == 1 and (ms == p.start or ms.month == 1)
             else f"{ms:%b}"
         )
-        out.append(
-            f'<text class="axis" x="{X(k) + 4:.1f}" y="{H - B // 2 + 4}">{text}</text>'
-        )
+        out.append(el("text", text, class_="axis", x=X(k) + 4, y=H - B // 2 + 4))
 
     # tolerance band around the even pace
     if p.tol_days > 0 and p.total > 0:
@@ -127,9 +161,8 @@ def _render(p: Plan, lay: Layout, today: date) -> str:
         )
         upper = [(k, min(p.total, p.ideal(k) + tol)) for k in breaks]
         lower = [(k, max(0.0, p.ideal(k) - tol)) for k in reversed(breaks)]
-        out.append(
-            f'<polygon class="band" points="{" ".join(pt(k, v) for k, v in upper + lower)}"/>'
-        )
+        band = " ".join(pt(k, v) for k, v in upper + lower)
+        out.append(el("polygon", class_="band", points=band))
 
     # leave blocks
     for e in p.entries:
@@ -138,28 +171,39 @@ def _render(p: Plan, lay: Layout, today: date) -> str:
             continue
         x, w = X(i0), X(i1 + 1) - X(i0)
         booked = e.status == "booked"
-        fill = "currentColor" if booked else f"url(#{hatch})"
-        title = (
-            f"{escape(e.label)}: {fmt_date(e.start_d)} to {fmt_date(e.end_d)}, "
-            f"{e.days_total:g} days ({e.status})"
-        )
+        dates = f"{fmt_date(e.start_d)} to {fmt_date(e.end_d)}"
+        title = f"{escape(e.label)}: {dates}, {e.days_total:g} days ({e.status})"
         out.append(
-            f'<rect class="{"blk-booked" if booked else "blk-tent"}" x="{x:.1f}" y="{T}" '
-            f'width="{max(w, 2):.1f}" height="{ph}" fill="{fill}"><title>{title}</title></rect>'
+            el(
+                "rect",
+                el("title", title),
+                class_="blk-booked" if booked else "blk-tent",
+                x=x,
+                y=T,
+                width=max(w, 2.0),
+                height=ph,
+                fill="currentColor" if booked else f"url(#{hatch})",
+            )
         )
 
     # flexed bank holidays: working days, so they must not be mistaken for days off
     for d in sorted(p.flexed):
         x = X(p.idx(d))
+        title = f"{escape(BANK_HOLIDAYS[d].name)}: {fmt_date(d)} (flexed, working day)"
         out.append(
-            f'<rect class="blk-flex" x="{x:.1f}" y="{T}" width="{max(X(p.idx(d) + 1) - x, 3):.1f}" height="{ph}">'
-            f"<title>{escape(BANK_HOLIDAYS[d].name)}: {fmt_date(d)} (flexed, working day)</title></rect>"
+            el(
+                "rect",
+                el("title", title),
+                class_="blk-flex",
+                x=x,
+                y=T,
+                width=max(X(p.idx(d) + 1) - x, 3.0),
+                height=ph,
+            )
         )
 
     # even pace
-    out.append(
-        f'<line class="ideal" x1="{X(0):.1f}" y1="{Y(p.total):.1f}" x2="{X(p.n):.1f}" y2="{Y(0):.1f}"/>'
-    )
+    out.append(el("line", class_="ideal", x1=X(0), y1=Y(p.total), x2=X(p.n), y2=Y(0)))
 
     def polyline(rem: list[float], used: list[float]) -> str:
         ks = {0, p.n}
@@ -168,47 +212,48 @@ def _render(p: Plan, lay: Layout, today: date) -> str:
                 ks.update((i, i + 1))
         return " ".join(pt(k, rem[k]) for k in sorted(ks))
 
-    has_tent = any(e.status == "tentative" for e in p.entries)
-    if has_tent:
-        out.append(
-            f'<polyline class="plan booked-only" points="{polyline(p.rem_booked, p.used_booked)}"/>'
-        )
-    out.append(f'<polyline class="plan" points="{polyline(p.rem_all, p.used_all)}"/>')
+    if any(e.status == "tentative" for e in p.entries):
+        booked_only = polyline(p.rem_booked, p.used_booked)
+        out.append(el("polyline", class_="plan booked-only", points=booked_only))
+    out.append(el("polyline", class_="plan", points=polyline(p.rem_all, p.used_all)))
 
     # markers
     kx = christmas_k(p)
     if kx is not None:
-        out.append(
-            f'<line class="marker" x1="{X(kx):.1f}" x2="{X(kx):.1f}" y1="{T}" y2="{T + ph}"/>'
-        )
+        out.append(vline(X(kx), "marker"))
         out.append(label(X(kx), T + 12, "Christmas", strong=True))
         out.append(
-            f'<circle class="dot ideal-dot" cx="{X(kx):.1f}" cy="{Y(p.ideal(kx)):.1f}" r="4"/>'
+            el("circle", class_="dot ideal-dot", cx=X(kx), cy=Y(p.ideal(kx)), r=4)
         )
-        out.append(
-            f'<circle class="dot" cx="{X(kx):.1f}" cy="{Y(p.rem_all[kx]):.1f}" r="4.5"/>'
-        )
+        out.append(el("circle", class_="dot", cx=X(kx), cy=Y(p.rem_all[kx]), r=4.5))
     if p.start <= today <= p.end:
         kt = p.idx(today)
-        out.append(
-            f'<line class="marker today" x1="{X(kt):.1f}" x2="{X(kt):.1f}" y1="{T}" y2="{T + ph}"/>'
-        )
+        out.append(vline(X(kt), "marker today"))
         # Drop the label a line if it would sit on top of the Christmas one.
         near_xmas = kx is not None and abs(X(kt) - X(kx)) < 9 * lay.font
         out.append(label(X(kt), T + (26 if near_xmas else 12), "Today", strong=True))
 
     end_v = p.rem_all[-1]
-    out.append(f'<circle class="dot" cx="{X(p.n):.1f}" cy="{Y(end_v):.1f}" r="4.5"/>')
+    out.append(el("circle", class_="dot", cx=X(p.n), cy=Y(end_v), r=4.5))
     end_label = f"{end_v:g} unplanned" if end_v >= 0 else f"{-end_v:g} over allowance"
     out.append(
-        f'<text class="axis strong" x="{X(p.n) - 9:.1f}" y="{Y(end_v) - 9:.1f}" text-anchor="end">{end_label}</text>'
+        el(
+            "text",
+            end_label,
+            class_="axis strong",
+            x=X(p.n) - 9,
+            y=Y(end_v) - 9,
+            text_anchor="end",
+        )
     )
 
-    return (
-        f'<svg class="chart chart-{lay.name}" viewBox="0 0 {W} {H}" role="img" '
-        f'aria-label="Leave remaining across the year against an even pace">'
-        + "".join(out)
-        + "</svg>"
+    return el(
+        "svg",
+        "".join(out),
+        class_=f"chart chart-{lay.name}",
+        viewBox=f"0 0 {W} {H}",
+        role="img",
+        aria_label="Leave remaining across the year against an even pace",
     )
 
 

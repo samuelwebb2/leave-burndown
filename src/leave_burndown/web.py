@@ -86,7 +86,7 @@ def summarise(p: Plan) -> Summary:
         used, ideal_used = p.total - p.rem_all[kx], p.total - p.ideal(kx)
         warnings.append(
             f"By Christmas you would have used {used:g} of {p.total:g} days "
-            f"({used / p.total:.0%}); an even pace would be about {ideal_used:.1f}."
+            + f"({used / p.total:.0%}); an even pace would be about {ideal_used:.1f}."
         )
     return {
         "booked": booked,
@@ -147,7 +147,7 @@ def create_app(data_file: str | os.PathLike[str] | None = None) -> Flask:
         except KeyError, ValueError:
             flash(
                 "Those settings weren't valid. Use a real date, days of 0 or more, "
-                "and a tolerance of 0-50%."
+                + "and a tolerance of 0-50%."
             )
             return redirect(url_for("index", open="settings"))
         s["skip_bank_holidays"] = request.form.get("skip_bank_holidays") == "on"
@@ -213,8 +213,8 @@ def create_app(data_file: str | os.PathLike[str] | None = None) -> Flask:
                 last = fmt_date(date.fromisoformat(inside["end"]))
                 flash(
                     f"Can't flex {holiday.name}: it falls inside your leave "
-                    f"“{inside['label']}” ({first} to {last}). "
-                    "Change or delete that leave first."
+                    + f"“{inside['label']}” ({first} to {last}). "
+                    + "Change or delete that leave first."
                 )
             else:
                 flexed ^= {day}  # toggle
