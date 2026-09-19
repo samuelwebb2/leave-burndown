@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Leave burn-down</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<main>
+  <h1>Leave burn-down</h1>
+  <p class="sub">{{ fd(p.start, True) }} to {{ fd(p.end, True) }} &middot; {{ p.n }} days</p>
+
+  {% for cat, msg in get_flashed_messages(with_categories=true) %}<div class="flash {{ cat }}">{{ msg }}</div>{% endfor %}
+  {% for w in warnings %}<div class="flash">{{ w }}</div>{% endfor %}
+
+  <section class="figures">
+    <div class="fig"><b>{{ '%g' % p.total }}</b><span>days this year</span></div>
+    <div class="fig"><b>{{ '%g' % booked }}</b><span>booked</span></div>
+    <div class="fig"><b>{{ '%g' % tentative }}</b><span>tentative</span></div>
+    <div class="fig {{ 'bad' if unplanned < 0 }}"><b>{{ '%g' % unplanned }}</b><span>still unplanned</span></div>
+    {% if xmas %}<div class="fig {{ 'bad' if xmas.fast }}"><b>{{ '%g' % xmas.used }}</b><span>used by Christmas<br>even pace {{ '%.1f' % xmas.ideal_used }}</span></div>{% endif %}
+  </section>
+
+  <div class="chartbox">
+    {{ chart }}
+    <div class="legend">
+      <span><i style="border-color:var(--accent)"></i>Remaining, including tentative</span>
+      {% if tentative %}<span><i style="border-color:var(--accent);border-top-style:dotted"></i>Booked only</span>{% endif %}
+      <span><i style="border-color:var(--muted);border-top-style:dashed"></i>Even pace</span>
+      <span><i class="sw"></i>Within {{ '%g' % s.tolerance_pct }}% of even pace</span>
+    </div>
+  </div>
+
+  <div class="cols">
+    <section>
+      <h2>Leave</h2>
+      {% if p.entries %}
+      <table>
+        <thead><tr><th>What</th><th class="n">Days</th><th></th><th></th><th></th></tr></thead>
+        <tbody>
+        {% for e in p.entries %}
+          <tr{{ ' class=editing' if editing and editing.id == e.id }}>
+            <td>{{ e.label }}<small>{{ fd(e.start_d) }}{% if e.end_d != e.start_d %} to {{ fd(e.end_d) }}{% endif %}{% if e.outside %} &middot; partly outside this leave year{% endif %}</small></td>
+            <td class="n">{{ '%g' % e.days_total }}</td>
+            <td><form method="post" action="{{ url_for('toggle', eid=e.id) }}"><button class="pill {{ e.status }}" title="Switch between booked and tentative">{{ e.status }}</button></form></td>
+            <td class="n"><a class="link" href="{{ url_for('index', edit=e.id) }}#entry-form">Edit</a></td>
+            <td class="n"><form method="post" action="{{ url_for('delete', eid=e.id) }}"><button class="link">Delete</button></form></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<p class="empty">No leave planned yet. Add some below.</p>{% endif %}
+
+      <form class="add" id="entry-form" method="post" action="{{ url_for('edit', eid=editing.id) if editing else url_for('add') }}">
+        <div class="wide"><label for="label">What is it?</label><input id="label" name="label" placeholder="Halloween visit" value="{{ editing.label if editing }}" required></div>
+        <div class="third"><label for="start">First day off</label><input id="start" name="start" type="date" value="{{ editing.start if editing }}" required></div>
+        <div class="third"><label for="end">Last day off</label><input id="end" name="end" type="date" value="{{ editing.end if editing }}" required></div>
+        <div class="third"><label for="days">Days (optional)</label><input id="days" name="days" type="number" step="0.5" min="0.5" placeholder="auto" value="{{ '%g' % editing.days if editing and editing.days is not none }}"></div>
+        <div class="half"><label for="status">Status</label>
+          <select id="status" name="status">
+            <option value="tentative" {{ 'selected' if editing and editing.status == 'tentative' }}>Tentative</option>
+            <option value="booked" {{ 'selected' if editing and editing.status == 'booked' }}>Booked</option>
+          </select></div>
+        <div class="half actions">
+          <button class="btn" type="submit">{{ 'Save changes' if editing else 'Add leave' }}</button>
+          {% if editing %}<a class="link" href="{{ url_for('index') }}">Cancel</a>{% endif %}
+        </div>
+        <div class="wide hint" id="preview"></div>
+      </form>
+    </section>
+
+    <section>
+      <h2>End of each month</h2>
+      <table>
+        <thead><tr><th>By</th><th class="n">Left</th><th class="n">Even pace</th><th></th></tr></thead>
+        <tbody>
+        {% for r in rows %}
+          <tr>
+            <td>{{ r.date.strftime('%d %b') }}</td>
+            <td class="n">{{ '%g' % r.planned }}</td>
+            <td class="n">{{ '%.1f' % r.ideal }}</td>
+            <td class="n"><span class="pill {{ r.state }}">{{ {'ok':'on pace','fast':'using fast','slow':'lots left'}[r.state] }}</span></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  </div>
+
+  <details {{ 'open' if open_settings }}>
+    <summary>Allowance and settings</summary>
+    <form class="settings" method="post" action="{{ url_for('settings') }}">
+      <div><label for="year_start">Leave year starts</label><input id="year_start" name="year_start" type="date" value="{{ s.year_start }}" required></div>
+      <div><label for="base_days">Base allowance (days)</label><input id="base_days" name="base_days" type="number" step="0.5" min="0" value="{{ '%g' % s.base_days }}"></div>
+      <div><label for="extra_days">Bought extra (days)</label><input id="extra_days" name="extra_days" type="number" step="0.5" min="0" value="{{ '%g' % s.extra_days }}"></div>
+      <div><label for="carried_days">Carried over (days)</label><input id="carried_days" name="carried_days" type="number" step="0.5" min="0" value="{{ '%g' % s.carried_days }}"></div>
+      <div><label for="tolerance_pct">Pace tolerance (%)</label><input id="tolerance_pct" name="tolerance_pct" type="number" step="1" min="0" max="50" value="{{ '%g' % s.tolerance_pct }}"></div>
+      <label class="check"><input type="checkbox" name="skip_bank_holidays" {{ 'checked' if s.skip_bank_holidays }}> Bank holidays don't use leave</label>
+      <div><button class="btn" type="submit">Save settings</button></div>
+    </form>
+  </details>
+</main>
+
+<script id="config" type="application/json">{{ js_config|tojson }}</script>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+[project]
+name = "leave-burndown"
+version = "0.1.0"
+description = "Annual leave burn-down chart and planner"
+readme = "README.md"
+authors = [
+    { name = "sammy", email = "samuelwebb2@proton.me" }
+]
+requires-python = ">=3.14"
+dependencies = ["flask>=3.0"]
+
+[project.scripts]
+leave-burndown = "leave_burndown:main"
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
