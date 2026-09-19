@@ -12,7 +12,7 @@
 <body>
 <main>
   <h1>Leave burn-down</h1>
-  <p class="sub">{{ fd(p.start, True) }} to {{ fd(p.end, True) }} &middot; {{ p.n }} days</p>
+  <p class="sub">{{ fd(p.start, True) }} to {{ fd(p.end, True) }} · {{ p.n }} days</p>
 
   {% for cat, msg in get_flashed_messages(with_categories=true) %}<div class="flash {{ cat }}">{{ msg }}</div>{% endfor %}
   {% for w in warnings %}<div class="flash">{{ w }}</div>{% endfor %}
@@ -34,9 +34,9 @@
   <div class="chartbox">
     {{ chart }}
     <div class="legend">
-      <span><i style="border-color:var(--accent)"></i>Remaining, including tentative</span>
-      {% if tentative %}<span><i style="border-color:var(--accent);border-top-style:dotted"></i>Booked only</span>{% endif %}
-      <span><i style="border-color:var(--muted);border-top-style:dashed"></i>Even pace</span>
+      <span><i class="plan"></i>Remaining, including tentative</span>
+      {% if tentative %}<span><i class="booked-only"></i>Booked only</span>{% endif %}
+      <span><i class="ideal"></i>Even pace</span>
       <span><i class="sw"></i>Within {{ '%g' % s.tolerance_pct }}% of even pace</span>
       {% if p.flexed %}<span><i class="sw flex"></i>Flexed bank holiday (working day)</span>{% endif %}
     </div>
@@ -67,12 +67,12 @@
     <ul class="leave-list">
       {% for e in p.entries %}
       <li{{ ' class=editing' if editing and editing.id == e.id }}>
-        <div class="what">{{ e.label }}<small>{{ fd(e.start) }}{% if e.end != e.start %} to {{ fd(e.end) }}{% endif %}{% if e.start == e.end %}{% if e.half_start or e.half_end %} &middot; half day{% endif %}{% elif e.half_start and e.half_end %} &middot; half days on the first and last day{% elif e.half_start %} &middot; half day on the first day{% elif e.half_end %} &middot; half day on the last day{% endif %}{% if e.outside %} &middot; partly outside this leave year{% endif %}{% if e.flexed_names %} &middot; includes flexed {{ e.flexed_names|join(', ') }}, so it uses leave{% endif %}</small></div>
+        <div class="what">{{ e.label }}<small>{{ fd(e.start) }}{% if e.end != e.start %} to {{ fd(e.end) }}{% endif %}{% if e.start == e.end %}{% if e.half_start or e.half_end %} · half day{% endif %}{% elif e.half_start and e.half_end %} · half days on the first and last day{% elif e.half_start %} · half day on the first day{% elif e.half_end %} · half day on the last day{% endif %}{% if e.outside %} · partly outside this leave year{% endif %}{% if e.flexed_names %} · includes flexed {{ e.flexed_names|join(', ') }}, so it uses leave{% endif %}</small></div>
         <div class="days">{{ '%g' % e.days_total }}<span>{{ 'day' if e.days_total == 1 else 'days' }}</span></div>
         <div class="acts">
-          <form method="post" action="{{ url_for('toggle', eid=e.id) }}"><button class="pill {{ e.status }}" title="Switch between booked and tentative">{{ e.status }}</button></form>
+          <form method="post" action="{{ url_for('toggle', eid=e.id) }}"><button type="submit" class="pill {{ e.status }}" title="Switch between booked and tentative">{{ e.status }}</button></form>
           <a class="link" href="{{ url_for('index', edit=e.id, open='leave') }}#entry-form">Edit</a>
-          <form method="post" action="{{ url_for('delete', eid=e.id) }}"><button class="link">Delete</button></form>
+          <form method="post" action="{{ url_for('delete', eid=e.id) }}"><button type="submit" class="link">Delete</button></form>
         </div>
       </li>
       {% endfor %}
@@ -110,7 +110,7 @@
           <td class="n">
           {% if not h.flexible %}<span class="muted">fixed</span>
           {% elif not s.skip_bank_holidays %}<span class="muted">uses leave</span>
-          {% else %}<form method="post" action="{{ url_for('flex', iso=h.date.isoformat()) }}"><button class="pill {{ 'flexed' if flexed }}" title="{{ 'Stop flexing: take it as a bank holiday again' if flexed else 'Work this day and gain a day of leave' }}">{{ 'flexed &middot; working'|safe if flexed else 'flex' }}</button></form>
+          {% else %}<form method="post" action="{{ url_for('flex', iso=h.date.isoformat()) }}"><button type="submit" class="pill {{ 'flexed' if flexed }}" title="{{ 'Stop flexing: take it as a bank holiday again' if flexed else 'Work this day and gain a day of leave' }}">{{ 'flexed · working'|safe if flexed else 'flex' }}</button></form>
           {% endif %}
           </td>
         </tr>

@@ -562,3 +562,17 @@ tr.flexed td {
     padding: 14px;
   }
 }
+
+.legend i.plan {
+  border-color: var(--accent);
+}
+
+.legend i.booked-only {
+  border-color: var(--accent);
+  border-top-style: dotted;
+}
+
+.legend i.ideal {
+  border-color: var(--muted);
+  border-top-style: dashed;
+}
