@@ -1,5 +1,7 @@
 from datetime import date
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
+
+import pytest
 
 from leave_burndown.plan import compute
 from leave_burndown.storage import DEFAULT_SETTINGS
@@ -7,27 +9,39 @@ from leave_burndown.storage import DEFAULT_SETTINGS
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from leave_burndown.storage import LeaveData
+    from leave_burndown.storage import EntryFields, LeaveData, Status
 
 
 def make_data(
-    entries: Iterable[dict[str, Any]] = (),
+    entries: Iterable[EntryFields] = (),
     flexed: Iterable[str] = (),
-    **settings: float | str | bool,
+    *,
+    skip_bank_holidays: bool = True,
 ) -> LeaveData:
     """Leave year 1 Sep 2026 - 31 Aug 2027 with a 30 day allowance (25 + 5 bought)."""
-    data = {
-        "settings": {**DEFAULT_SETTINGS, **settings},
-        "entries": [
-            {"id": str(i), "status": "tentative", **e} for i, e in enumerate(entries)
-        ],
+    return {
+        "settings": {**DEFAULT_SETTINGS, "skip_bank_holidays": skip_bank_holidays},
+        "entries": [{"id": str(i), **e} for i, e in enumerate(entries)],
         "flexed_holidays": list(flexed),
     }
-    return cast("LeaveData", data)
 
 
-def entry(start: str, end: str, **extra: bool | str) -> dict[str, Any]:
-    return {"label": "x", "start": start, "end": end, **extra}
+def entry(
+    start: str,
+    end: str,
+    *,
+    status: Status = "tentative",
+    half_start: bool = False,
+    half_end: bool = False,
+) -> EntryFields:
+    return {
+        "label": "x",
+        "start": start,
+        "end": end,
+        "status": status,
+        "half_start": half_start,
+        "half_end": half_end,
+    }
 
 
 def test_weekends_and_bank_holidays_dont_use_leave() -> None:
@@ -69,14 +83,16 @@ def test_half_day_on_the_last_day_only() -> None:
     assert p.entries[0].days_total == 3.5
 
 
-def test_a_single_half_day_costs_half_however_it_is_flagged() -> None:
-    for flags in (
-        {"half_start": True},
-        {"half_end": True},
-        {"half_start": True, "half_end": True},
-    ):
-        p = compute(make_data([entry("2026-10-06", "2026-10-06", **flags)]))
-        assert p.entries[0].days_total == 0.5, flags
+@pytest.mark.parametrize(
+    ("half_start", "half_end"), [(True, False), (False, True), (True, True)]
+)
+def test_a_single_half_day_costs_half_however_it_is_flagged(
+    half_start: bool, half_end: bool
+) -> None:
+    one_day = entry(
+        "2026-10-06", "2026-10-06", half_start=half_start, half_end=half_end
+    )
+    assert compute(make_data([one_day])).entries[0].days_total == 0.5
 
 
 def test_half_day_on_a_non_working_end_changes_nothing() -> None:

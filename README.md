@@ -11,6 +11,7 @@ uv run pytest                        # unit tests
 uv run ruff check                  # lint
 uv run ruff format                 # format
 uv run ty check                    # type check
+uv run basedpyright                 # type check (stricter; what Zed runs)
 ```
 
 Data is stored in `leave_data.json` in the working directory, or wherever `LEAVE_DATA` points.

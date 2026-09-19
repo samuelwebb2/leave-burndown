@@ -72,13 +72,24 @@ EXAMPLE_ENTRIES: list[Entry] = [
 
 def load(path: Path) -> LeaveData:
     """Read the data file, filling in defaults. A missing file gives the example entry."""
-    raw: dict[str, Any] = (
+    # JSON is untyped by nature, so this is the one place `Any` is accepted.
+    raw: dict[str, Any] = (  # pyright: ignore[reportExplicitAny]
         json.loads(path.read_text())
         if path.exists()
         else {"entries": deepcopy(EXAMPLE_ENTRIES)}
     )
+    stored: dict[str, Any] = raw.get("settings", {})  # pyright: ignore[reportExplicitAny, reportAny]
+    d = DEFAULT_SETTINGS
+    settings: Settings = {
+        "year_start": stored.get("year_start", d["year_start"]),
+        "base_days": stored.get("base_days", d["base_days"]),
+        "extra_days": stored.get("extra_days", d["extra_days"]),
+        "carried_days": stored.get("carried_days", d["carried_days"]),
+        "tolerance_pct": stored.get("tolerance_pct", d["tolerance_pct"]),
+        "skip_bank_holidays": stored.get("skip_bank_holidays", d["skip_bank_holidays"]),
+    }
     return {
-        "settings": {**DEFAULT_SETTINGS, **raw.get("settings", {})},
+        "settings": settings,
         "entries": raw.get("entries", []),
         "flexed_holidays": raw.get("flexed_holidays", []),
     }
@@ -86,5 +97,5 @@ def load(path: Path) -> LeaveData:
 
 def save(path: Path, data: LeaveData) -> None:
     tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, indent=2))
-    tmp.replace(path)
+    _ = tmp.write_text(json.dumps(data, indent=2))
+    _ = tmp.replace(path)

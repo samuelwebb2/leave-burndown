@@ -1,5 +1,7 @@
+# pyright: reportUnusedCallResult=false
+# (posting to a route and only checking the outcome afterwards is the point of most tests)
 import json
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -12,6 +14,8 @@ if TYPE_CHECKING:
 
     from flask.testing import FlaskClient
     from werkzeug.test import TestResponse
+
+    from leave_burndown.storage import Entry
 
 GOOD_FRIDAY = "2027-03-26"
 
@@ -29,8 +33,8 @@ def client(path: Path) -> FlaskClient:
     return create_app(path).test_client()
 
 
-def entries(path: Path) -> list[dict[str, Any]]:
-    return json.loads(path.read_text())["entries"]
+def entries(path: Path) -> list[Entry]:
+    return load(path)["entries"]
 
 
 def add(
@@ -48,7 +52,7 @@ def test_half_days_at_either_end_are_saved_and_cost_half(
 ) -> None:
     add(client, "2026-10-07", "2026-10-12", half_start="on", half_end="on")
     saved = entries(path)[0]
-    assert saved["half_start"] is True and saved["half_end"] is True
+    assert saved.get("half_start") is True and saved.get("half_end") is True
     assert compute(load(path)).entries[0].days_total == 3
 
 
@@ -151,8 +155,10 @@ def test_actions_reopen_the_section_they_came_from(
 def test_allowance_is_broken_down_into_its_parts(
     client: FlaskClient, path: Path
 ) -> None:
-    data = json.loads(path.read_text())
-    data["settings"] = {"base_days": 26, "extra_days": 5, "carried_days": 3}
+    data = load(path)
+    data["settings"]["base_days"] = 26
+    data["settings"]["extra_days"] = 5
+    data["settings"]["carried_days"] = 3
     path.write_text(json.dumps(data))
     client.post(f"/flex/{GOOD_FRIDAY}")
 

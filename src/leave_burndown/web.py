@@ -10,11 +10,11 @@ from uuid import uuid4
 
 from flask import Flask, abort, flash, redirect, render_template, request, url_for
 
-from . import storage
 from .chart import build_chart
 from .formatting import fmt_date
 from .holidays import BANK_HOLIDAYS
 from .plan import checkpoints, christmas_k, compute, flexed_dates
+from .storage import load, save
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -110,7 +110,7 @@ def create_app(data_file: str | os.PathLike[str] | None = None) -> Flask:
 
     @app.get("/")
     def index() -> str:
-        data = storage.load(path)
+        data = load(path)
         p = compute(data)
         s = data["settings"]
         editing = next(
@@ -133,7 +133,7 @@ def create_app(data_file: str | os.PathLike[str] | None = None) -> Flask:
 
     @app.post("/settings")
     def settings() -> Response:
-        data = storage.load(path)
+        data = load(path)
         s = data["settings"].copy()
         try:
             s["year_start"] = date.fromisoformat(request.form["year_start"]).isoformat()
@@ -152,25 +152,25 @@ def create_app(data_file: str | os.PathLike[str] | None = None) -> Flask:
             return redirect(url_for("index", open="settings"))
         s["skip_bank_holidays"] = request.form.get("skip_bank_holidays") == "on"
         data["settings"] = s
-        storage.save(path, data)
+        save(path, data)
         flash("Settings saved.", "info")
         return redirect(url_for("index"))
 
     @app.post("/add")
     def add() -> Response:
-        data = storage.load(path)
+        data = load(path)
         try:
             fields = parse_entry_form(request.form, flexed_dates(data))
         except InvalidLeaveError as error:
             flash(str(error))
         else:
             data["entries"].append({"id": uuid4().hex[:8], **fields})
-            storage.save(path, data)
+            save(path, data)
         return redirect(url_for("index"))
 
     @app.post("/edit/<eid>")
     def edit(eid: str) -> Response:
-        data = storage.load(path)
+        data = load(path)
         try:
             fields = parse_entry_form(request.form, flexed_dates(data))
         except InvalidLeaveError as error:
@@ -178,8 +178,13 @@ def create_app(data_file: str | os.PathLike[str] | None = None) -> Flask:
             return redirect(url_for("index", edit=eid, open="leave"))
         for e in data["entries"]:
             if e["id"] == eid:
-                e.update(fields)
-                storage.save(path, data)
+                e["label"] = fields["label"]
+                e["start"] = fields["start"]
+                e["end"] = fields["end"]
+                e["status"] = fields["status"]
+                e["half_start"] = fields["half_start"]
+                e["half_end"] = fields["half_end"]
+                save(path, data)
                 break
         else:
             flash("That leave entry no longer exists.")
@@ -187,7 +192,7 @@ def create_app(data_file: str | os.PathLike[str] | None = None) -> Flask:
 
     @app.post("/flex/<iso>")
     def flex(iso: str) -> Response:
-        data = storage.load(path)
+        data = load(path)
         try:
             holiday = BANK_HOLIDAYS[date.fromisoformat(iso)]
         except ValueError, KeyError:
@@ -214,23 +219,23 @@ def create_app(data_file: str | os.PathLike[str] | None = None) -> Flask:
             else:
                 flexed ^= {day}  # toggle
                 data["flexed_holidays"] = sorted(flexed)
-                storage.save(path, data)
+                save(path, data)
         return redirect(url_for("index", open="holidays") + "#bank-holidays")
 
     @app.post("/toggle/<eid>")
     def toggle(eid: str) -> Response:
-        data = storage.load(path)
+        data = load(path)
         for e in data["entries"]:
             if e["id"] == eid:
                 e["status"] = "tentative" if e["status"] == "booked" else "booked"
-        storage.save(path, data)
+        save(path, data)
         return redirect(url_for("index", open="leave"))
 
     @app.post("/delete/<eid>")
     def delete(eid: str) -> Response:
-        data = storage.load(path)
+        data = load(path)
         data["entries"] = [e for e in data["entries"] if e["id"] != eid]
-        storage.save(path, data)
+        save(path, data)
         return redirect(url_for("index", open="leave"))
 
     return app
