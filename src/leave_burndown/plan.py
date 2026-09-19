@@ -79,18 +79,16 @@ def compute(data: dict) -> Plan:
             date.fromisoformat(e["start"]),
             date.fromisoformat(e["end"]),
         )
-        wd = working_days(e["start_d"], e["end_d"], non_working)
-        e["days_total"] = (
-            float(e["days"]) if e.get("days") is not None else float(len(wd))
-        )
-        per_day = e["days_total"] / len(wd) if wd else 0.0
-        contribution: dict[int, float] = {}
-        for d in wd:
-            contribution[(d - start).days] = per_day
-        if not wd and e["days_total"] > 0:
-            contribution[(e["start_d"] - start).days] = e["days_total"]
+        # Each working day costs 1, except a half day at either end of the leave,
+        # which costs 0.5. (An end that isn't a working day has nothing to halve.)
+        cost = {d: 1.0 for d in working_days(e["start_d"], e["end_d"], non_working)}
+        for flag, d in (("half_start", e["start_d"]), ("half_end", e["end_d"])):
+            if e.get(flag) and d in cost:
+                cost[d] = 0.5
+        e["days_total"] = sum(cost.values())
         in_year = 0.0
-        for i, amount in contribution.items():
+        for d, amount in cost.items():
+            i = (d - start).days
             if 0 <= i < n:
                 used_all[i] += amount
                 if e["status"] == "booked":

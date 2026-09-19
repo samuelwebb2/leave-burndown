@@ -20,7 +20,6 @@ EXAMPLE_ENTRIES = [
         "label": "Bike packing adventure (example)",
         "start": "2026-10-29",
         "end": "2026-11-03",
-        "days": None,
         "status": "tentative",
     }
 ]

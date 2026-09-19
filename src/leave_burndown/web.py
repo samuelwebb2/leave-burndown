@@ -23,22 +23,16 @@ def parse_entry_form(form) -> tuple[dict | None, str | None]:
         end = date.fromisoformat(form.get("end", ""))
     except ValueError:
         return None, "Enter both a first and a last day."
-    days_raw = (form.get("days") or "").strip()
-    try:
-        days = float(days_raw) if days_raw else None
-    except ValueError:
-        days = -1.0
     if end < start:
         return None, "The last day can't be before the first day."
     if (end - start).days > 366:
         return None, "That range is longer than a year."
-    if days is not None and days <= 0:
-        return None, "Days must be a number above 0, or left blank."
     return {
         "label": (form.get("label") or "Leave").strip()[:80],
         "start": start.isoformat(),
         "end": end.isoformat(),
-        "days": days,
+        "half_start": form.get("half_start") == "on",
+        "half_end": form.get("half_end") == "on",
         "status": "booked" if form.get("status") == "booked" else "tentative",
     }, None
 

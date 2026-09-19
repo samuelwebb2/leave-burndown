@@ -88,3 +88,4 @@ tr.editing td{background:var(--band)}
 .pill.flexed{color:var(--flex)}
 tr.flexed td{background:var(--flexbg)}
 .muted{color:var(--muted);font-size:13px}
+form.add .check.sub{margin-top:6px;font-size:13px;color:var(--muted)}
