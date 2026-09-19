@@ -22,6 +22,21 @@ def daterange(a: date, b: date):
         yield a + timedelta(days=i)
 
 
+def flexed_dates(data: dict) -> frozenset[date]:
+    """Flexed bank holidays that are in force.
+
+    Only the flexible ones count, and only while bank holidays are free days
+    (flexing is meaningless if they already use leave).
+    """
+    if not data["settings"]["skip_bank_holidays"]:
+        return frozenset()
+    return frozenset(
+        d
+        for d in map(date.fromisoformat, data.get("flexed_holidays", []))
+        if d in BANK_HOLIDAYS and BANK_HOLIDAYS[d].flexible
+    )
+
+
 def working_days(a: date, b: date, non_working: Collection[date]) -> list[date]:
     """Weekdays in a..b that use leave, i.e. not in `non_working`."""
     return [d for d in daterange(a, b) if d.weekday() < 5 and d not in non_working]
@@ -61,13 +76,8 @@ def compute(data: dict) -> Plan:
     # A flexed holiday is a working day: it adds a day to the allowance, and
     # leave that spans it uses a day. `non_working` covers every known bank
     # holiday, not just this year's, so entries outside the year still count right.
-    skip = s["skip_bank_holidays"]
-    flexed_all = {
-        d
-        for d in map(date.fromisoformat, data.get("flexed_holidays", []))
-        if skip and d in BANK_HOLIDAYS and BANK_HOLIDAYS[d].flexible
-    }
-    non_working = frozenset(BANK_HOLIDAYS if skip else ()) - flexed_all
+    flexed_all = flexed_dates(data)
+    non_working = frozenset(BANK_HOLIDAYS if s["skip_bank_holidays"] else ()) - flexed_all
     flexed = frozenset(h.date for h in holidays if h.date in flexed_all)
     total = s["base_days"] + s["extra_days"] + s["carried_days"] + len(flexed)
 

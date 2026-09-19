@@ -13,11 +13,14 @@ from . import storage
 from .chart import build_chart
 from .formatting import fmt_date
 from .holidays import BANK_HOLIDAYS
-from .plan import Plan, checkpoints, christmas_k, compute
+from .plan import Plan, checkpoints, christmas_k, compute, flexed_dates
 
 
-def parse_entry_form(form) -> tuple[dict | None, str | None]:
-    """Validate the leave form. Returns (fields, None) or (None, error message)."""
+def parse_entry_form(form, flexed: frozenset[date]) -> tuple[dict | None, str | None]:
+    """Validate the leave form. Returns (fields, None) or (None, error message).
+
+    `flexed` are the bank holidays being worked, which leave can't cover.
+    """
     try:
         start = date.fromisoformat(form.get("start", ""))
         end = date.fromisoformat(form.get("end", ""))
@@ -27,6 +30,12 @@ def parse_entry_form(form) -> tuple[dict | None, str | None]:
         return None, "The last day can't be before the first day."
     if (end - start).days > 366:
         return None, "That range is longer than a year."
+    if clashes := [BANK_HOLIDAYS[d] for d in sorted(flexed) if start <= d <= end]:
+        names = ", ".join(f"{h.name} ({fmt_date(h.date)})" for h in clashes)
+        return None, (
+            f"That leave covers {names}, which you've flexed, so you'd be working that day. "
+            "Unflex it first, or book the days either side."
+        )
     return {
         "label": (form.get("label") or "Leave").strip()[:80],
         "start": start.isoformat(),
@@ -125,22 +134,22 @@ def create_app(data_file: str | os.PathLike | None = None) -> Flask:
 
     @app.post("/add")
     def add():
-        fields, error = parse_entry_form(request.form)
+        data = storage.load(path)
+        fields, error = parse_entry_form(request.form, flexed_dates(data))
         if error:
             flash(error)
         else:
-            data = storage.load(path)
             data["entries"].append({"id": uuid4().hex[:8], **fields})
             storage.save(path, data)
         return redirect(url_for("index"))
 
     @app.post("/edit/<eid>")
     def edit(eid):
-        fields, error = parse_entry_form(request.form)
+        data = storage.load(path)
+        fields, error = parse_entry_form(request.form, flexed_dates(data))
         if error:
             flash(error)
             return redirect(url_for("index", edit=eid))
-        data = storage.load(path)
         for e in data["entries"]:
             if e["id"] == eid:
                 e.update(fields)
@@ -162,10 +171,19 @@ def create_app(data_file: str | os.PathLike | None = None) -> Flask:
         elif not data["settings"]["skip_bank_holidays"]:
             flash("Bank holidays are set to use leave, so there is nothing to flex.")
         else:
+            day = holiday.date.isoformat()
             flexed = set(data["flexed_holidays"])
-            flexed ^= {holiday.date.isoformat()}  # toggle
-            data["flexed_holidays"] = sorted(flexed)
-            storage.save(path, data)
+            booked = next((e for e in data["entries"] if e["start"] <= day <= e["end"]), None)
+            if day not in flexed and booked:  # flexing means working it, so it can't be leave
+                flash(
+                    f"Can't flex {holiday.name}: it falls inside your leave \u201c{booked['label']}\u201d "
+                    f"({fmt_date(date.fromisoformat(booked['start']))} to "
+                    f"{fmt_date(date.fromisoformat(booked['end']))}). Change or delete that leave first."
+                )
+            else:
+                flexed ^= {day}  # toggle
+                data["flexed_holidays"] = sorted(flexed)
+                storage.save(path, data)
         return redirect(url_for("index") + "#bank-holidays")
 
     @app.post("/toggle/<eid>")
