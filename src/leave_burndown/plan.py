@@ -33,11 +33,11 @@ def flexed_dates(data: LeaveData) -> frozenset[date]:
     Only the flexible ones count, and only while bank holidays are free days
     (flexing is meaningless if they already use leave).
     """
-    if not data["settings"]["skip_bank_holidays"]:
+    if not data.settings.skip_bank_holidays:
         return frozenset[date]()
     return frozenset(
         d
-        for d in map(date.fromisoformat, data["flexed_holidays"])
+        for d in data.flexed_holidays
         if d in BANK_HOLIDAYS and BANK_HOLIDAYS[d].flexible
     )
 
@@ -54,8 +54,8 @@ class PlannedEntry:
     id: str
     label: str
     status: Status
-    start_d: date
-    end_d: date
+    start: date
+    end: date
     half_start: bool
     half_end: bool
     days_total: float  # leave days used, wherever they fall
@@ -88,8 +88,8 @@ class Plan:
 
 
 def compute(data: LeaveData) -> Plan:
-    s = data["settings"]
-    start = date.fromisoformat(s["year_start"])
+    s = data.settings
+    start = s.year_start
     end = year_end(start)
     n = (end - start).days + 1
     holidays = [h for d, h in sorted(BANK_HOLIDAYS.items()) if start <= d <= end]
@@ -99,24 +99,17 @@ def compute(data: LeaveData) -> Plan:
     # leave that spans it uses a day. `non_working` covers every known bank
     # holiday, not just this year's, so entries outside the year still count right.
     flexed_all = flexed_dates(data)
-    non_working = (
-        frozenset(BANK_HOLIDAYS if s["skip_bank_holidays"] else ()) - flexed_all
-    )
+    non_working = frozenset(BANK_HOLIDAYS if s.skip_bank_holidays else ()) - flexed_all
     flexed = frozenset(h.date for h in holidays if h.date in flexed_all)
-    total = s["base_days"] + s["extra_days"] + s["carried_days"] + len(flexed)
+    total = s.base_days + s.extra_days + s.carried_days + len(flexed)
 
     used_all, used_booked = [0.0] * n, [0.0] * n
     entries: list[PlannedEntry] = []
-    for raw in data["entries"]:
-        start_d = date.fromisoformat(raw["start"])
-        end_d = date.fromisoformat(raw["end"])
-        half_start = raw.get("half_start", False)
-        half_end = raw.get("half_end", False)
-
+    for e in data.entries:
         # Each working day costs 1, except a half day at either end of the leave,
         # which costs 0.5. (An end that isn't a working day has nothing to halve.)
-        cost = dict.fromkeys(working_days(start_d, end_d, non_working), 1.0)
-        for half, d in ((half_start, start_d), (half_end, end_d)):
+        cost = dict.fromkeys(working_days(e.start, e.end, non_working), 1.0)
+        for half, d in ((e.half_start, e.start), (e.half_end, e.end)):
             if half and d in cost:
                 cost[d] = 0.5
         days_total = sum(cost.values())
@@ -126,30 +119,30 @@ def compute(data: LeaveData) -> Plan:
             i = (d - start).days
             if 0 <= i < n:
                 used_all[i] += amount
-                if raw["status"] == "booked":
+                if e.status == "booked":
                     used_booked[i] += amount
                 in_year += amount
 
         entries.append(
             PlannedEntry(
-                id=raw["id"],
-                label=raw["label"],
-                status=raw["status"],
-                start_d=start_d,
-                end_d=end_d,
-                half_start=half_start,
-                half_end=half_end,
+                id=e.id,
+                label=e.label,
+                status=e.status,
+                start=e.start,
+                end=e.end,
+                half_start=e.half_start,
+                half_end=e.half_end,
                 days_total=days_total,
                 days_in_year=in_year,
                 outside=abs(in_year - days_total) > 1e-9,
                 flexed_names=[
                     BANK_HOLIDAYS[d].name
                     for d in sorted(flexed_all)
-                    if start_d <= d <= end_d
+                    if e.start <= d <= e.end
                 ],
             )
         )
-    entries.sort(key=lambda e: (e.start_d, e.end_d))
+    entries.sort(key=lambda e: (e.start, e.end))
 
     def cumulative(used: list[float]) -> list[float]:
         rem: list[float] = [total]
@@ -162,7 +155,7 @@ def compute(data: LeaveData) -> Plan:
         end=end,
         n=n,
         total=total,
-        tol_days=total * s["tolerance_pct"] / 100,
+        tol_days=total * s.tolerance_pct / 100,
         entries=entries,
         used_all=used_all,
         used_booked=used_booked,

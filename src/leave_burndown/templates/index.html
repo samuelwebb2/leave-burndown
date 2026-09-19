@@ -45,9 +45,9 @@
   <form class="add" id="entry-form" method="post" action="{{ url_for('edit', eid=editing.id) if editing else url_for('add') }}">
     <h2>{{ 'Edit leave' if editing else 'Add leave' }}</h2>
     <div class="wide"><label for="label">What is it?</label><input id="label" name="label" placeholder="Bikepacking adventure" value="{{ editing.label if editing }}" required></div>
-    <div class="half"><label for="start">First day off</label><input id="start" name="start" type="date" value="{{ editing.start if editing }}" required>
+    <div class="half"><label for="start">First day off</label><input id="start" name="start" type="date" value="{{ editing.start.isoformat() if editing }}" required>
       <label class="check sub"><input type="checkbox" id="half_start" name="half_start" {{ 'checked' if editing and editing.half_start }}> Half day</label></div>
-    <div class="half"><label for="end">Last day off</label><input id="end" name="end" type="date" value="{{ editing.end if editing }}" required>
+    <div class="half"><label for="end">Last day off</label><input id="end" name="end" type="date" value="{{ editing.end.isoformat() if editing }}" required>
       <label class="check sub"><input type="checkbox" id="half_end" name="half_end" {{ 'checked' if editing and editing.half_end }}> Half day</label></div>
     <div class="half"><label for="status">Status</label>
       <select id="status" name="status">
@@ -67,7 +67,7 @@
     <ul class="leave-list">
       {% for e in p.entries %}
       <li{{ ' class=editing' if editing and editing.id == e.id }}>
-        <div class="what">{{ e.label }}<small>{{ fd(e.start_d) }}{% if e.end_d != e.start_d %} to {{ fd(e.end_d) }}{% endif %}{% if e.start_d == e.end_d %}{% if e.half_start or e.half_end %} &middot; half day{% endif %}{% elif e.half_start and e.half_end %} &middot; half days on the first and last day{% elif e.half_start %} &middot; half day on the first day{% elif e.half_end %} &middot; half day on the last day{% endif %}{% if e.outside %} &middot; partly outside this leave year{% endif %}{% if e.flexed_names %} &middot; includes flexed {{ e.flexed_names|join(', ') }}, so it uses leave{% endif %}</small></div>
+        <div class="what">{{ e.label }}<small>{{ fd(e.start) }}{% if e.end != e.start %} to {{ fd(e.end) }}{% endif %}{% if e.start == e.end %}{% if e.half_start or e.half_end %} &middot; half day{% endif %}{% elif e.half_start and e.half_end %} &middot; half days on the first and last day{% elif e.half_start %} &middot; half day on the first day{% elif e.half_end %} &middot; half day on the last day{% endif %}{% if e.outside %} &middot; partly outside this leave year{% endif %}{% if e.flexed_names %} &middot; includes flexed {{ e.flexed_names|join(', ') }}, so it uses leave{% endif %}</small></div>
         <div class="days">{{ '%g' % e.days_total }}<span>{{ 'day' if e.days_total == 1 else 'days' }}</span></div>
         <div class="acts">
           <form method="post" action="{{ url_for('toggle', eid=e.id) }}"><button class="pill {{ e.status }}" title="Switch between booked and tentative">{{ e.status }}</button></form>
@@ -123,7 +123,7 @@
   <details class="sect" id="settings" {{ 'open' if open_section == 'settings' }}>
     <summary>Allowance and settings</summary>
     <form class="settings" method="post" action="{{ url_for('settings') }}">
-      <div><label for="year_start">Leave year starts</label><input id="year_start" name="year_start" type="date" value="{{ s.year_start }}" required></div>
+      <div><label for="year_start">Leave year starts</label><input id="year_start" name="year_start" type="date" value="{{ s.year_start.isoformat() }}" required></div>
       <div><label for="base_days">Base allowance (days)</label><input id="base_days" name="base_days" type="number" step="0.5" min="0" value="{{ '%g' % s.base_days }}"></div>
       <div><label for="extra_days">Bought extra (days)</label><input id="extra_days" name="extra_days" type="number" step="0.5" min="0" value="{{ '%g' % s.extra_days }}"></div>
       <div><label for="carried_days">Carried over (days)</label><input id="carried_days" name="carried_days" type="number" step="0.5" min="0" value="{{ '%g' % s.carried_days }}"></div>

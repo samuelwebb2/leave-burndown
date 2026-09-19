@@ -7,7 +7,10 @@ authors = [
     { name = "sammy", email = "samuelwebb2@proton.me" }
 ]
 requires-python = ">=3.14"
-dependencies = ["flask>=3.0"]
+dependencies = [
+    "flask>=3.0",
+    "pydantic>=2.10",
+]
 
 [project.scripts]
 leave-burndown = "leave_burndown:main"
@@ -35,3 +38,7 @@ all = "error"
 # rules, unused arguments, return simplification, timezone-aware dates, and
 # annotations on every function.
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "C4", "RUF", "PIE", "RET", "ARG", "ANN", "TC", "DTZ"]
+
+[tool.ruff.lint.flake8-type-checking]
+# pydantic reads annotations at runtime, so what they name must be a real import.
+runtime-evaluated-base-classes = ["pydantic.BaseModel"]

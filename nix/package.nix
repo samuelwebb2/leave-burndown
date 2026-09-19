@@ -3,6 +3,7 @@
   buildPythonApplication,
   uv-build,
   flask,
+  pydantic,
 }:
 
 let
@@ -29,7 +30,10 @@ buildPythonApplication {
   '';
 
   build-system = [ uv-build ];
-  dependencies = [ flask ];
+  dependencies = [
+    flask
+    pydantic
+  ];
 
   pythonImportsCheck = [ "leave_burndown" ];
 

@@ -4,26 +4,26 @@ from typing import TYPE_CHECKING
 import pytest
 
 from leave_burndown.plan import compute
-from leave_burndown.storage import DEFAULT_SETTINGS
+from leave_burndown.storage import Entry, LeaveData, Settings
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from leave_burndown.storage import EntryFields, LeaveData, Status
+    from leave_burndown.storage import Status
 
 
 def make_data(
-    entries: Iterable[EntryFields] = (),
+    entries: Iterable[Entry] = (),
     flexed: Iterable[str] = (),
     *,
     skip_bank_holidays: bool = True,
 ) -> LeaveData:
     """Leave year 1 Sep 2026 - 31 Aug 2027 with a 30 day allowance (25 + 5 bought)."""
-    return {
-        "settings": {**DEFAULT_SETTINGS, "skip_bank_holidays": skip_bank_holidays},
-        "entries": [{"id": str(i), **e} for i, e in enumerate(entries)],
-        "flexed_holidays": list(flexed),
-    }
+    return LeaveData(
+        settings=Settings(skip_bank_holidays=skip_bank_holidays),
+        entries=list(entries),
+        flexed_holidays=[date.fromisoformat(d) for d in flexed],
+    )
 
 
 def entry(
@@ -33,15 +33,15 @@ def entry(
     status: Status = "tentative",
     half_start: bool = False,
     half_end: bool = False,
-) -> EntryFields:
-    return {
-        "label": "x",
-        "start": start,
-        "end": end,
-        "status": status,
-        "half_start": half_start,
-        "half_end": half_end,
-    }
+) -> Entry:
+    return Entry(
+        label="x",
+        start=date.fromisoformat(start),
+        end=date.fromisoformat(end),
+        status=status,
+        half_start=half_start,
+        half_end=half_end,
+    )
 
 
 def test_weekends_and_bank_holidays_dont_use_leave() -> None:

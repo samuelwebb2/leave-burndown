@@ -6,7 +6,6 @@ import os
 from datetime import date, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, TypedDict
-from uuid import uuid4
 
 from flask import Flask, abort, flash, redirect, render_template, request, url_for
 
@@ -14,7 +13,7 @@ from .chart import build_chart
 from .formatting import fmt_date
 from .holidays import BANK_HOLIDAYS
 from .plan import checkpoints, christmas_k, compute, flexed_dates
-from .storage import load, save
+from .storage import Entry, Settings, load, new_id, save
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -22,14 +21,15 @@ if TYPE_CHECKING:
     from werkzeug.wrappers import Response
 
     from .plan import Plan
-    from .storage import EntryFields
 
 
 class InvalidLeaveError(ValueError):
     """The leave form was filled in wrongly; the message is shown to the user."""
 
 
-def parse_entry_form(form: Mapping[str, str], flexed: frozenset[date]) -> EntryFields:
+def parse_entry_form(
+    form: Mapping[str, str], flexed: frozenset[date], entry_id: str | None = None
+) -> Entry:
     """Validate the leave form, raising InvalidLeaveError if it is wrong.
 
     `flexed` are the bank holidays being worked, which leave can't cover.
@@ -50,17 +50,18 @@ def parse_entry_form(form: Mapping[str, str], flexed: frozenset[date]) -> EntryF
         names = ", ".join(f"{h.name} ({fmt_date(h.date)})" for h in clashes)
         msg = (
             f"That leave covers {names}, which you've flexed, so you'd be working "
-            "that day. Unflex it first, or book the days either side."
+            + "that day. Unflex it first, or book the days either side."
         )
         raise InvalidLeaveError(msg)
-    return {
-        "label": (form.get("label") or "Leave").strip()[:80],
-        "start": start.isoformat(),
-        "end": end.isoformat(),
-        "half_start": form.get("half_start") == "on",
-        "half_end": form.get("half_end") == "on",
-        "status": "booked" if form.get("status") == "booked" else "tentative",
-    }
+    return Entry(
+        id=entry_id or new_id(),
+        label=(form.get("label") or "Leave").strip()[:80],
+        start=start,
+        end=end,
+        status="booked" if form.get("status") == "booked" else "tentative",
+        half_start=form.get("half_start") == "on",
+        half_end=form.get("half_end") == "on",
+    )
 
 
 class Summary(TypedDict):
@@ -96,13 +97,6 @@ def summarise(p: Plan) -> Summary:
     }
 
 
-def _non_negative(form: Mapping[str, str], key: str) -> float:
-    value = float(form.get(key) or 0)
-    if value < 0:
-        raise ValueError(key)
-    return value
-
-
 def create_app(data_file: str | os.PathLike[str] | None = None) -> Flask:
     app = Flask(__name__)
     app.secret_key = os.environ.get("SECRET_KEY") or os.urandom(16)
@@ -112,14 +106,13 @@ def create_app(data_file: str | os.PathLike[str] | None = None) -> Flask:
     def index() -> str:
         data = load(path)
         p = compute(data)
-        s = data["settings"]
         editing = next(
-            (e for e in data["entries"] if e["id"] == request.args.get("edit")), None
+            (e for e in data.entries if e.id == request.args.get("edit")), None
         )
         return render_template(
             "index.html",
             p=p,
-            s=s,
+            s=data.settings,
             chart=build_chart(p, datetime.now().astimezone().date()),
             rows=checkpoints(p),
             editing=editing,
@@ -134,24 +127,26 @@ def create_app(data_file: str | os.PathLike[str] | None = None) -> Flask:
     @app.post("/settings")
     def settings() -> Response:
         data = load(path)
-        s = data["settings"].copy()
         try:
-            s["year_start"] = date.fromisoformat(request.form["year_start"]).isoformat()
-            s["base_days"] = _non_negative(request.form, "base_days")
-            s["extra_days"] = _non_negative(request.form, "extra_days")
-            s["carried_days"] = _non_negative(request.form, "carried_days")
-            tol = float(request.form.get("tolerance_pct") or 0)
-            if not 0 <= tol <= 50:
-                raise ValueError(tol)
-            s["tolerance_pct"] = tol
-        except KeyError, ValueError:
+            # A blank number means 0. The model checks the dates and the limits.
+            data.settings = Settings.model_validate(
+                {
+                    "year_start": request.form["year_start"],
+                    "base_days": request.form.get("base_days") or 0,
+                    "extra_days": request.form.get("extra_days") or 0,
+                    "carried_days": request.form.get("carried_days") or 0,
+                    "tolerance_pct": request.form.get("tolerance_pct") or 0,
+                    "skip_bank_holidays": (
+                        request.form.get("skip_bank_holidays") == "on"
+                    ),
+                }
+            )
+        except KeyError, ValueError:  # a pydantic ValidationError is a ValueError
             flash(
                 "Those settings weren't valid. Use a real date, days of 0 or more, "
                 + "and a tolerance of 0-50%."
             )
             return redirect(url_for("index", open="settings"))
-        s["skip_bank_holidays"] = request.form.get("skip_bank_holidays") == "on"
-        data["settings"] = s
         save(path, data)
         flash("Settings saved.", "info")
         return redirect(url_for("index"))
@@ -160,11 +155,11 @@ def create_app(data_file: str | os.PathLike[str] | None = None) -> Flask:
     def add() -> Response:
         data = load(path)
         try:
-            fields = parse_entry_form(request.form, flexed_dates(data))
+            entry = parse_entry_form(request.form, flexed_dates(data))
         except InvalidLeaveError as error:
             flash(str(error))
         else:
-            data["entries"].append({"id": uuid4().hex[:8], **fields})
+            data.entries.append(entry)
             save(path, data)
         return redirect(url_for("index"))
 
@@ -172,18 +167,13 @@ def create_app(data_file: str | os.PathLike[str] | None = None) -> Flask:
     def edit(eid: str) -> Response:
         data = load(path)
         try:
-            fields = parse_entry_form(request.form, flexed_dates(data))
+            entry = parse_entry_form(request.form, flexed_dates(data), eid)
         except InvalidLeaveError as error:
             flash(str(error))
             return redirect(url_for("index", edit=eid, open="leave"))
-        for e in data["entries"]:
-            if e["id"] == eid:
-                e["label"] = fields["label"]
-                e["start"] = fields["start"]
-                e["end"] = fields["end"]
-                e["status"] = fields["status"]
-                e["half_start"] = fields["half_start"]
-                e["half_end"] = fields["half_end"]
+        for i, e in enumerate(data.entries):
+            if e.id == eid:
+                data.entries[i] = entry
                 save(path, data)
                 break
         else:
@@ -199,42 +189,38 @@ def create_app(data_file: str | os.PathLike[str] | None = None) -> Flask:
             abort(404)
         if not holiday.flexible:
             flash(f"{holiday.name} is a fixed bank holiday and can't be flexed.")
-        elif not data["settings"]["skip_bank_holidays"]:
+        elif not data.settings.skip_bank_holidays:
             flash("Bank holidays are set to use leave, so there is nothing to flex.")
         else:
-            day = holiday.date.isoformat()
-            flexed = set(data["flexed_holidays"])
-            inside = next(
-                (e for e in data["entries"] if e["start"] <= day <= e["end"]), None
-            )
+            day = holiday.date
+            flexed = set(data.flexed_holidays)
+            inside = next((e for e in data.entries if e.start <= day <= e.end), None)
             if day not in flexed and inside:
                 # Flexing means working it, so it can't be leave.
-                first = fmt_date(date.fromisoformat(inside["start"]))
-                last = fmt_date(date.fromisoformat(inside["end"]))
                 flash(
                     f"Can't flex {holiday.name}: it falls inside your leave "
-                    + f"“{inside['label']}” ({first} to {last}). "
-                    + "Change or delete that leave first."
+                    + f"“{inside.label}” ({fmt_date(inside.start)} to "
+                    + f"{fmt_date(inside.end)}). Change or delete that leave first."
                 )
             else:
                 flexed ^= {day}  # toggle
-                data["flexed_holidays"] = sorted(flexed)
+                data.flexed_holidays = sorted(flexed)
                 save(path, data)
         return redirect(url_for("index", open="holidays") + "#bank-holidays")
 
     @app.post("/toggle/<eid>")
     def toggle(eid: str) -> Response:
         data = load(path)
-        for e in data["entries"]:
-            if e["id"] == eid:
-                e["status"] = "tentative" if e["status"] == "booked" else "booked"
+        for e in data.entries:
+            if e.id == eid:
+                e.status = "tentative" if e.status == "booked" else "booked"
         save(path, data)
         return redirect(url_for("index", open="leave"))
 
     @app.post("/delete/<eid>")
     def delete(eid: str) -> Response:
         data = load(path)
-        data["entries"] = [e for e in data["entries"] if e["id"] != eid]
+        data.entries = [e for e in data.entries if e.id != eid]
         save(path, data)
         return redirect(url_for("index", open="leave"))
 

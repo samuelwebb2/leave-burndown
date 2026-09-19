@@ -166,12 +166,12 @@ def _render(p: Plan, lay: Layout, today: date) -> str:
 
     # leave blocks
     for e in p.entries:
-        i0, i1 = max(p.idx(e.start_d), 0), min(p.idx(e.end_d), p.n - 1)
+        i0, i1 = max(p.idx(e.start), 0), min(p.idx(e.end), p.n - 1)
         if i1 < i0:
             continue
         x, w = X(i0), X(i1 + 1) - X(i0)
         booked = e.status == "booked"
-        dates = f"{fmt_date(e.start_d)} to {fmt_date(e.end_d)}"
+        dates = f"{fmt_date(e.start)} to {fmt_date(e.end)}"
         title = f"{escape(e.label)}: {dates}, {e.days_total:g} days ({e.status})"
         out.append(
             el(
