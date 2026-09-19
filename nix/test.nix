@@ -18,7 +18,7 @@ self:
     machine.wait_for_open_port(5050)
 
     # Renders the page, chart and static files.
-    machine.succeed("curl -sf http://127.0.0.1:5050/ | grep -q '<svg class=\"chart\"'")
+    machine.succeed("curl -sf http://127.0.0.1:5050/ | grep -q '<svg class=\"chart chart-wide\"'")
     machine.succeed("curl -sf http://127.0.0.1:5050/static/style.css")
 
     # The secret key credential reaches the app's environment.

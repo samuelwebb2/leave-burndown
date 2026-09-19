@@ -31,10 +31,12 @@ h2{font:400 26px/1.15 var(--serif);margin:0 0 12px}
 .legend i{display:inline-block;width:22px;height:0;border-top:2px solid;vertical-align:middle;margin-right:6px}
 .legend i.sw{height:10px;width:14px;border:0;background:var(--band);outline:1px solid var(--line)}
 .chart{width:100%;height:auto;display:block}
+.chart-compact{display:none}
 .chart .grid{stroke:var(--line);stroke-width:1}
 .chart .grid.faint{stroke-dasharray:1 5}
 .chart .grid.zero{stroke:var(--warn);opacity:.6}
 .chart .axis{fill:var(--muted);font:12px var(--sans)}
+.chart-compact .axis{font-size:11px}
 .chart .axis.strong{fill:var(--ink);font-weight:500;paint-order:stroke;stroke:var(--panel);stroke-width:4px;stroke-linejoin:round}
 .chart .band{fill:var(--band)}
 .chart .ideal{stroke:var(--muted);stroke-width:1.5;stroke-dasharray:6 5}
@@ -53,8 +55,6 @@ h2{font:400 26px/1.15 var(--serif);margin:0 0 12px}
   .figures{grid-template-columns:repeat(2,1fr)}
   .fig,.fig+.fig{border-left:0;padding-left:0}
   .fig:nth-child(n+3){border-top:1px solid var(--line)}
-  .chartbox{overflow-x:auto}
-  .chart{min-width:700px}
 }
 table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
 th{font-weight:500;color:var(--muted);text-align:left;font-size:13px;padding:6px 8px 6px 0;border-bottom:1px solid var(--line)}
@@ -89,3 +89,7 @@ tr.editing td{background:var(--band)}
 tr.flexed td{background:var(--flexbg)}
 .muted{color:var(--muted);font-size:13px}
 form.add .check.sub{margin-top:6px;font-size:13px;color:var(--muted)}
+@media (max-width:640px){
+  .chart-wide{display:none}
+  .chart-compact{display:block;max-width:480px;margin:0 auto}
+}

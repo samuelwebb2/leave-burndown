@@ -1,8 +1,14 @@
-"""Server-rendered SVG chart of leave remaining against an even pace."""
+"""Server-rendered SVG chart of leave remaining against an even pace.
+
+The chart is drawn twice, in a wide and a compact layout, and CSS shows whichever
+fits the screen. Scaling one drawing down to phone width would shrink the text to
+nothing, so the compact layout is taller, with fewer ticks and month labels.
+"""
 
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from datetime import date
 
 from markupsafe import Markup, escape
@@ -12,17 +18,35 @@ from .holidays import BANK_HOLIDAYS
 from .plan import Plan, christmas_k, month_starts
 
 
-def tick_step(top: float) -> int:
+@dataclass(frozen=True)
+class Layout:
+    name: str
+    W: int
+    H: int
+    L: int  # margins
+    R: int
+    T: int
+    B: int
+    max_ticks: int  # most y-axis gridlines
+    month_every: int  # label every nth month
+    font: int  # axis font size in viewBox units, to estimate label widths
+
+
+WIDE = Layout("wide", 840, 400, 44, 26, 26, 44, max_ticks=8, month_every=1, font=12)
+COMPACT = Layout("compact", 360, 400, 30, 14, 24, 32, max_ticks=5, month_every=2, font=11)
+
+
+def tick_step(top: float, max_ticks: int) -> int:
     for s in (1, 2, 5, 10, 20, 25, 50, 100):
-        if top / s <= 8:
+        if top / s <= max_ticks:
             return s
     return 100
 
 
-def build_chart(p: Plan) -> Markup:
-    W, H, L, R, T, B = 960, 420, 44, 28, 26, 44
+def _render(p: Plan, lay: Layout) -> str:
+    W, H, L, R, T, B = lay.W, lay.H, lay.L, lay.R, lay.T, lay.B
     pw, ph = W - L - R, H - T - B
-    step = tick_step(p.total)
+    step = tick_step(p.total, lay.max_ticks)
     ymax = max(step, math.ceil(p.total / step) * step)
     lo = min(p.rem_all)
     ymin = (
@@ -31,12 +55,22 @@ def build_chart(p: Plan) -> Markup:
     X = lambda k: L + pw * k / p.n
     Y = lambda v: T + ph * (1 - (v - ymin) / (ymax - ymin))
     pt = lambda k, v: f"{X(k):.1f},{Y(v):.1f}"
+    hatch = f"hatch-{lay.name}"  # unique per drawing: both live in the same page
     out: list[str] = []
 
     out.append(
-        '<defs><pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">'
+        f'<defs><pattern id="{hatch}" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">'
         '<line class="hatch-line" x1="0" y1="0" x2="0" y2="6"/></pattern></defs>'
     )
+
+    def label(x: float, y: float, text: str, strong: bool = False) -> str:
+        """Text at x, flipped to the left of x if it would run off the right edge."""
+        width = len(text) * lay.font * 0.6
+        flip = x + 5 + width > W - R
+        return (
+            f'<text class="axis{" strong" if strong else ""}" x="{x - 5 if flip else x + 5:.1f}" y="{y:.1f}"'
+            f'{' text-anchor="end"' if flip else ""}>{text}</text>'
+        )
 
     # horizontal grid + y labels
     for v in range(int(ymin), int(ymax) + 1, step):
@@ -44,19 +78,23 @@ def build_chart(p: Plan) -> Markup:
             f'<line class="grid{" zero" if v == 0 and ymin < 0 else ""}" x1="{L}" x2="{W - R}" y1="{Y(v):.1f}" y2="{Y(v):.1f}"/>'
         )
         out.append(
-            f'<text class="axis" x="{L - 8}" y="{Y(v) + 4:.1f}" text-anchor="end">{v}</text>'
+            f'<text class="axis" x="{L - 6}" y="{Y(v) + 4:.1f}" text-anchor="end">{v}</text>'
         )
 
     # month lines + labels
-    for ms in month_starts(p):
+    for i, ms in enumerate(month_starts(p)):
         k = p.idx(ms)
         out.append(
             f'<line class="grid faint" x1="{X(k):.1f}" x2="{X(k):.1f}" y1="{T}" y2="{T + ph}"/>'
         )
-        label = (
-            f"{ms:%b} \u2019{ms:%y}" if (ms == p.start or ms.month == 1) else f"{ms:%b}"
+        if i % lay.month_every:
+            continue
+        text = (
+            f"{ms:%b} ’{ms:%y}"
+            if lay.month_every == 1 and (ms == p.start or ms.month == 1)
+            else f"{ms:%b}"
         )
-        out.append(f'<text class="axis" x="{X(k) + 4:.1f}" y="{H - 20}">{label}</text>')
+        out.append(f'<text class="axis" x="{X(k) + 4:.1f}" y="{H - B // 2 + 4}">{text}</text>')
 
     # tolerance band around the even pace
     if p.tol_days > 0 and p.total > 0:
@@ -92,7 +130,7 @@ def build_chart(p: Plan) -> Markup:
                 T,
                 max(w, 2),
                 ph,
-                "url(#hatch)" if cls == "blk-tent" else "currentColor",
+                f"url(#{hatch})" if cls == "blk-tent" else "currentColor",
                 f"{escape(e['label'])}: {fmt_date(e['start_d'])} to {fmt_date(e['end_d'])}, {e['days_total']:g} days ({e['status']})",
             )
         )
@@ -131,9 +169,7 @@ def build_chart(p: Plan) -> Markup:
         out.append(
             f'<line class="marker" x1="{X(kx):.1f}" x2="{X(kx):.1f}" y1="{T}" y2="{T + ph}"/>'
         )
-        out.append(
-            f'<text class="axis strong" x="{X(kx) + 5:.1f}" y="{T + 12}">Christmas</text>'
-        )
+        out.append(label(X(kx), T + 12, "Christmas", strong=True))
         out.append(
             f'<circle class="dot ideal-dot" cx="{X(kx):.1f}" cy="{Y(p.ideal(kx)):.1f}" r="4"/>'
         )
@@ -146,9 +182,9 @@ def build_chart(p: Plan) -> Markup:
         out.append(
             f'<line class="marker today" x1="{X(kt):.1f}" x2="{X(kt):.1f}" y1="{T}" y2="{T + ph}"/>'
         )
-        out.append(
-            f'<text class="axis strong" x="{X(kt) + 5:.1f}" y="{T + 12}">Today</text>'
-        )
+        # Drop the label a line if it would sit on top of the Christmas one.
+        near_xmas = kx is not None and abs(X(kt) - X(kx)) < 9 * lay.font
+        out.append(label(X(kt), T + (26 if near_xmas else 12), "Today", strong=True))
 
     end_v = p.rem_all[-1]
     out.append(f'<circle class="dot" cx="{X(p.n):.1f}" cy="{Y(end_v):.1f}" r="4.5"/>')
@@ -157,9 +193,13 @@ def build_chart(p: Plan) -> Markup:
         f'<text class="axis strong" x="{X(p.n) - 9:.1f}" y="{Y(end_v) - 9:.1f}" text-anchor="end">{end_label}</text>'
     )
 
-    return Markup(
-        f'<svg class="chart" viewBox="0 0 {W} {H}" role="img" '
+    return (
+        f'<svg class="chart chart-{lay.name}" viewBox="0 0 {W} {H}" role="img" '
         f'aria-label="Leave remaining across the year against an even pace">'
         + "".join(out)
         + "</svg>"
     )
+
+
+def build_chart(p: Plan) -> Markup:
+    return Markup(_render(p, WIDE) + _render(p, COMPACT))
