@@ -93,7 +93,7 @@ h2 {
   color: var(--muted);
   font-size: 13px;
 }
-.fig.bad b {
+.bad b {
   color: var(--warn);
 }
 .allowance {

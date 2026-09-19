@@ -5,13 +5,21 @@ Annual leave planner and burn-down chart. The leave year runs 1 Sep to 31 Aug.
 ## Develop
 
 ```sh
+nix develop                                            # a shell with uv, biome and tsc
 uv sync
-LEAVE_DEBUG=1 uv run leave-burndown   # http://127.0.0.1:5050, debug is opt-in
-uv run pytest                        # unit tests
-uv run ruff check                  # lint
-uv run ruff format                 # format
-uv run ty check                    # type check
-uv run basedpyright                 # type check (stricter; what Zed runs)
+LEAVE_DEBUG=1 uv run leave-burndown                    # http://127.0.0.1:5050, debug is opt-in
+uv run pytest                                          # unit tests
+```
+
+Checks. `nix flake check` also runs the Biome, `tsc` and template-lint ones, plus a VM test of the service:
+
+```sh
+uv run ruff check && uv run ruff format --check        # Python lint and format
+uv run ty check && uv run basedpyright                 # Python types
+biome check                                            # CSS and JS: lint and format
+tsc -p tsconfig.json                                   # JS types (strict, from JSDoc)
+uv run djlint src/leave_burndown/templates --lint      # template lint
+uv run djlint src/leave_burndown/templates --check     # template format (`--reformat` fixes)
 ```
 
 Data is stored in `leave_data.json` in the working directory, or wherever `LEAVE_DATA` points.
