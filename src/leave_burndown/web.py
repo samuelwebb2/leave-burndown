@@ -58,22 +58,16 @@ def summarise(p: Plan) -> dict:
             f"You have planned {-unplanned:g} more days than your allowance."
         )
     kx = christmas_k(p)
-    xmas = None
-    if kx is not None:
-        used = p.total - p.rem_all[kx]
-        ideal_used = p.total - p.ideal(kx)
-        fast = p.rem_all[kx] < p.ideal(kx) - p.tol_days - 1e-9
-        xmas = {"used": used, "ideal_used": ideal_used, "fast": fast}
-        if fast:
-            warnings.append(
-                f"By Christmas you would have used {used:g} of {p.total:g} days "
-                f"({used / p.total:.0%}); an even pace would be about {ideal_used:.1f}."
-            )
+    if kx is not None and p.rem_all[kx] < p.ideal(kx) - p.tol_days - 1e-9:
+        used, ideal_used = p.total - p.rem_all[kx], p.total - p.ideal(kx)
+        warnings.append(
+            f"By Christmas you would have used {used:g} of {p.total:g} days "
+            f"({used / p.total:.0%}); an even pace would be about {ideal_used:.1f}."
+        )
     return {
         "booked": booked,
         "tentative": planned - booked,
         "unplanned": unplanned,
-        "xmas": xmas,
         "warnings": warnings,
     }
 
@@ -99,7 +93,7 @@ def create_app(data_file: str | os.PathLike | None = None) -> Flask:
             rows=checkpoints(p),
             editing=editing,
             fd=fmt_date,
-            open_settings=request.args.get("settings") == "1",
+            open_section=request.args.get("open"),
             js_config={
                 "bankHolidays": sorted(d.isoformat() for d in p.non_working),
             },
@@ -125,7 +119,7 @@ def create_app(data_file: str | os.PathLike | None = None) -> Flask:
             flash(
                 "Those settings weren't valid. Use a real date, days of 0 or more, and a tolerance of 0-50%."
             )
-            return redirect(url_for("index", settings=1))
+            return redirect(url_for("index", open="settings"))
         s["skip_bank_holidays"] = request.form.get("skip_bank_holidays") == "on"
         data["settings"] = s
         storage.save(path, data)
@@ -149,7 +143,7 @@ def create_app(data_file: str | os.PathLike | None = None) -> Flask:
         fields, error = parse_entry_form(request.form, flexed_dates(data))
         if error:
             flash(error)
-            return redirect(url_for("index", edit=eid))
+            return redirect(url_for("index", edit=eid, open="leave"))
         for e in data["entries"]:
             if e["id"] == eid:
                 e.update(fields)
@@ -157,7 +151,7 @@ def create_app(data_file: str | os.PathLike | None = None) -> Flask:
                 break
         else:
             flash("That leave entry no longer exists.")
-        return redirect(url_for("index"))
+        return redirect(url_for("index", open="leave"))
 
     @app.post("/flex/<iso>")
     def flex(iso):
@@ -184,7 +178,7 @@ def create_app(data_file: str | os.PathLike | None = None) -> Flask:
                 flexed ^= {day}  # toggle
                 data["flexed_holidays"] = sorted(flexed)
                 storage.save(path, data)
-        return redirect(url_for("index") + "#bank-holidays")
+        return redirect(url_for("index", open="holidays") + "#bank-holidays")
 
     @app.post("/toggle/<eid>")
     def toggle(eid):
@@ -193,13 +187,13 @@ def create_app(data_file: str | os.PathLike | None = None) -> Flask:
             if e["id"] == eid:
                 e["status"] = "tentative" if e["status"] == "booked" else "booked"
         storage.save(path, data)
-        return redirect(url_for("index"))
+        return redirect(url_for("index", open="leave"))
 
     @app.post("/delete/<eid>")
     def delete(eid):
         data = storage.load(path)
         data["entries"] = [e for e in data["entries"] if e["id"] != eid]
         storage.save(path, data)
-        return redirect(url_for("index"))
+        return redirect(url_for("index", open="leave"))
 
     return app

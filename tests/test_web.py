@@ -98,3 +98,48 @@ def test_flexing_can_be_undone_even_if_it_was_flexed_first(client, path):
     assert compute(load(path)).flexed
     client.post(f"/flex/{GOOD_FRIDAY}")
     assert not compute(load(path)).flexed
+
+
+def page(client, url="/"):
+    return client.get(url).get_data(as_text=True)
+
+
+def test_page_opens_on_the_chart_with_everything_else_collapsed(client):
+    html = page(client)
+    for section in ("leave", "months", "bank-holidays", "settings"):
+        assert f'<details class="sect" id="{section}" >' in html, section
+    assert "used by Christmas" not in html  # the tile is gone
+
+
+def test_open_parameter_expands_that_section_only(client):
+    html = page(client, "/?open=leave")
+    assert '<details class="sect" id="leave" open>' in html
+    assert '<details class="sect" id="settings" >' in html
+
+
+def test_actions_reopen_the_section_they_came_from(client, path):
+    add(client, "2026-10-05", "2026-10-06")
+    eid = entries(path)[0]["id"]
+    assert client.post(f"/toggle/{eid}").headers["Location"].endswith("?open=leave")
+    assert client.post(f"/delete/{eid}").headers["Location"].endswith("?open=leave")
+    assert "open=holidays" in client.post(f"/flex/{GOOD_FRIDAY}").headers["Location"]
+
+
+def test_allowance_is_broken_down_into_its_parts(client, path):
+    data = json.loads(path.read_text())
+    data["settings"] = {"base_days": 26, "extra_days": 5, "carried_days": 3}
+    path.write_text(json.dumps(data))
+    client.post(f"/flex/{GOOD_FRIDAY}")
+
+    html = page(client)
+    for part in ("<b>26</b> base", "<b>5</b> bought", "<b>3</b> carried over", "<b>1</b> flexed"):
+        assert part in html, part
+    assert "<b>35</b><span>days this year" in html  # 26 + 5 + 3 + 1 flexed
+
+
+def test_chart_has_a_wide_and_a_compact_layout_that_dont_share_ids(client, path):
+    add(client, "2026-10-05", "2026-10-06")  # tentative, so it uses the hatch pattern
+    html = page(client)
+    assert 'class="chart chart-wide"' in html and 'class="chart chart-compact"' in html
+    assert 'id="hatch-wide"' in html and 'id="hatch-compact"' in html
+    assert "url(#hatch-wide)" in html and "url(#hatch-compact)" in html
