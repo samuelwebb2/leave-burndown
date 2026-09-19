@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
-from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import date, timedelta
+from typing import TYPE_CHECKING, Literal
 
 from .holidays import BANK_HOLIDAYS, BankHoliday
+
+if TYPE_CHECKING:
+    from collections.abc import Collection, Iterator
+
+    from .storage import LeaveData, Status
 
 
 def year_end(start: date) -> date:
@@ -17,22 +22,22 @@ def year_end(start: date) -> date:
     return nxt - timedelta(days=1)
 
 
-def daterange(a: date, b: date):
+def daterange(a: date, b: date) -> Iterator[date]:
     for i in range((b - a).days + 1):
         yield a + timedelta(days=i)
 
 
-def flexed_dates(data: dict) -> frozenset[date]:
+def flexed_dates(data: LeaveData) -> frozenset[date]:
     """Flexed bank holidays that are in force.
 
     Only the flexible ones count, and only while bank holidays are free days
     (flexing is meaningless if they already use leave).
     """
     if not data["settings"]["skip_bank_holidays"]:
-        return frozenset()
+        return frozenset[date]()
     return frozenset(
         d
-        for d in map(date.fromisoformat, data.get("flexed_holidays", []))
+        for d in map(date.fromisoformat, data["flexed_holidays"])
         if d in BANK_HOLIDAYS and BANK_HOLIDAYS[d].flexible
     )
 
@@ -43,13 +48,30 @@ def working_days(a: date, b: date, non_working: Collection[date]) -> list[date]:
 
 
 @dataclass
+class PlannedEntry:
+    """A leave entry with what it costs worked out."""
+
+    id: str
+    label: str
+    status: Status
+    start_d: date
+    end_d: date
+    half_start: bool
+    half_end: bool
+    days_total: float  # leave days used, wherever they fall
+    days_in_year: float  # ...of which fall inside this leave year
+    outside: bool  # whether any of it falls outside this leave year
+    flexed_names: list[str]  # flexed bank holidays it spans (it uses leave on them)
+
+
+@dataclass
 class Plan:
     start: date
     end: date
     n: int  # days in the leave year
     total: float
     tol_days: float
-    entries: list[dict]  # each entry plus computed fields
+    entries: list[PlannedEntry]
     used_all: list[float]  # leave used on each day (booked + tentative)
     used_booked: list[float]
     rem_all: list[float]  # remaining at the start of day k (length n + 1)
@@ -65,7 +87,7 @@ class Plan:
         return (d - self.start).days
 
 
-def compute(data: dict) -> Plan:
+def compute(data: LeaveData) -> Plan:
     s = data["settings"]
     start = date.fromisoformat(s["year_start"])
     end = year_end(start)
@@ -84,40 +106,53 @@ def compute(data: dict) -> Plan:
     total = s["base_days"] + s["extra_days"] + s["carried_days"] + len(flexed)
 
     used_all, used_booked = [0.0] * n, [0.0] * n
-    entries = []
+    entries: list[PlannedEntry] = []
     for raw in data["entries"]:
-        e = dict(raw)
-        e["start_d"], e["end_d"] = (
-            date.fromisoformat(e["start"]),
-            date.fromisoformat(e["end"]),
-        )
+        start_d = date.fromisoformat(raw["start"])
+        end_d = date.fromisoformat(raw["end"])
+        half_start = raw.get("half_start", False)
+        half_end = raw.get("half_end", False)
+
         # Each working day costs 1, except a half day at either end of the leave,
         # which costs 0.5. (An end that isn't a working day has nothing to halve.)
-        cost = {d: 1.0 for d in working_days(e["start_d"], e["end_d"], non_working)}
-        for flag, d in (("half_start", e["start_d"]), ("half_end", e["end_d"])):
-            if e.get(flag) and d in cost:
+        cost = dict.fromkeys(working_days(start_d, end_d, non_working), 1.0)
+        for half, d in ((half_start, start_d), (half_end, end_d)):
+            if half and d in cost:
                 cost[d] = 0.5
-        e["days_total"] = sum(cost.values())
+        days_total = sum(cost.values())
+
         in_year = 0.0
         for d, amount in cost.items():
             i = (d - start).days
             if 0 <= i < n:
                 used_all[i] += amount
-                if e["status"] == "booked":
+                if raw["status"] == "booked":
                     used_booked[i] += amount
                 in_year += amount
-        e["days_in_year"] = in_year
-        e["outside"] = abs(in_year - e["days_total"]) > 1e-9
-        e["flexed_names"] = [
-            BANK_HOLIDAYS[d].name
-            for d in sorted(flexed_all)
-            if e["start_d"] <= d <= e["end_d"]
-        ]
-        entries.append(e)
-    entries.sort(key=lambda e: (e["start_d"], e["end_d"]))
+
+        entries.append(
+            PlannedEntry(
+                id=raw["id"],
+                label=raw["label"],
+                status=raw["status"],
+                start_d=start_d,
+                end_d=end_d,
+                half_start=half_start,
+                half_end=half_end,
+                days_total=days_total,
+                days_in_year=in_year,
+                outside=abs(in_year - days_total) > 1e-9,
+                flexed_names=[
+                    BANK_HOLIDAYS[d].name
+                    for d in sorted(flexed_all)
+                    if start_d <= d <= end_d
+                ],
+            )
+        )
+    entries.sort(key=lambda e: (e.start_d, e.end_d))
 
     def cumulative(used: list[float]) -> list[float]:
-        rem = [total]
+        rem: list[float] = [total]
         for u in used:
             rem.append(rem[-1] - u)
         return rem
@@ -140,38 +175,42 @@ def compute(data: dict) -> Plan:
 
 
 def month_starts(p: Plan) -> list[date]:
-    out, d = [], p.start
+    out: list[date] = []
+    d = p.start
     while d <= p.end:
         out.append(d)
         d = date(d.year + (d.month == 12), d.month % 12 + 1, 1)
     return out
 
 
-def checkpoints(p: Plan) -> list[dict]:
+@dataclass
+class Checkpoint:
+    """Where the plan stands against the even pace at the end of a month."""
+
+    day: date
+    planned: float  # leave remaining if the plan is followed
+    ideal: float  # leave remaining on an even pace
+    gap: float
+    state: Literal["ok", "fast", "slow"]  # within tolerance / using too fast / too slow
+
+
+def checkpoints(p: Plan) -> list[Checkpoint]:
     """Month-end rows comparing the plan with the even pace."""
-    rows = []
     starts = month_starts(p)
-    for i, ms in enumerate(starts):
-        last_day = (starts[i + 1] - timedelta(days=1)) if i + 1 < len(starts) else p.end
+    month_ends = [*(s - timedelta(days=1) for s in starts[1:]), p.end]
+    rows: list[Checkpoint] = []
+    for last_day in month_ends:
         k = p.idx(last_day) + 1
         planned, ideal = p.rem_all[k], p.ideal(k)
         gap = planned - ideal
-        state = (
+        state: Literal["ok", "fast", "slow"] = (
             "fast"
             if gap < -p.tol_days - 1e-9
             else "slow"
             if gap > p.tol_days + 1e-9
             else "ok"
         )
-        rows.append(
-            {
-                "date": last_day,
-                "planned": planned,
-                "ideal": ideal,
-                "gap": gap,
-                "state": state,
-            }
-        )
+        rows.append(Checkpoint(last_day, planned, ideal, gap, state))
     return rows
 
 

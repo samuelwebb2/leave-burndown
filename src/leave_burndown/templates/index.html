@@ -87,7 +87,7 @@
       <tbody>
       {% for r in rows %}
         <tr>
-          <td>{{ r.date.strftime('%d %b') }}</td>
+          <td>{{ r.day.strftime('%d %b') }}</td>
           <td class="n">{{ '%g' % r.planned }}</td>
           <td class="n">{{ '%.1f' % r.ideal }}</td>
           <td class="n"><span class="pill {{ r.state }}">{{ {'ok':'on pace','fast':'using fast','slow':'lots left'}[r.state] }}</span></td>

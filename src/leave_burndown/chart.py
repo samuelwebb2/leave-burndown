@@ -9,13 +9,18 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from datetime import date
+from typing import TYPE_CHECKING
 
 from markupsafe import Markup, escape
 
 from .formatting import fmt_date
 from .holidays import BANK_HOLIDAYS
 from .plan import Plan, christmas_k, month_starts
+
+if TYPE_CHECKING:
+    from datetime import date
+
+APOSTROPHE = "\N{RIGHT SINGLE QUOTATION MARK}"  # typographic, for 'yy years
 
 
 @dataclass(frozen=True)
@@ -45,7 +50,7 @@ def tick_step(top: float, max_ticks: int) -> int:
     return 100
 
 
-def _render(p: Plan, lay: Layout) -> str:
+def _render(p: Plan, lay: Layout, today: date) -> str:
     W, H, L, R, T, B = lay.W, lay.H, lay.L, lay.R, lay.T, lay.B
     pw, ph = W - L - R, H - T - B
     step = tick_step(p.total, lay.max_ticks)
@@ -54,9 +59,16 @@ def _render(p: Plan, lay: Layout) -> str:
     ymin = (
         0 if lo >= 0 else -math.ceil(-lo / step) * step
     )  # room below zero if over-planned
-    X = lambda k: L + pw * k / p.n
-    Y = lambda v: T + ph * (1 - (v - ymin) / (ymax - ymin))
-    pt = lambda k, v: f"{X(k):.1f},{Y(v):.1f}"
+
+    def X(k: float) -> float:
+        return L + pw * k / p.n
+
+    def Y(v: float) -> float:
+        return T + ph * (1 - (v - ymin) / (ymax - ymin))
+
+    def pt(k: float, v: float) -> str:
+        return f"{X(k):.1f},{Y(v):.1f}"
+
     hatch = f"hatch-{lay.name}"  # unique per drawing: both live in the same page
     out: list[str] = []
 
@@ -92,7 +104,7 @@ def _render(p: Plan, lay: Layout) -> str:
         if i % lay.month_every:
             continue
         text = (
-            f"{ms:%b} ’{ms:%y}"
+            f"{ms:%b} {APOSTROPHE}{ms:%y}"
             if lay.month_every == 1 and (ms == p.start or ms.month == 1)
             else f"{ms:%b}"
         )
@@ -121,24 +133,20 @@ def _render(p: Plan, lay: Layout) -> str:
 
     # leave blocks
     for e in p.entries:
-        i0, i1 = max(p.idx(e["start_d"]), 0), min(p.idx(e["end_d"]), p.n - 1)
+        i0, i1 = max(p.idx(e.start_d), 0), min(p.idx(e.end_d), p.n - 1)
         if i1 < i0:
             continue
         x, w = X(i0), X(i1 + 1) - X(i0)
-        cls = "blk-booked" if e["status"] == "booked" else "blk-tent"
-        fill = (
-            '<rect class="%s" x="%.1f" y="%d" width="%.1f" height="%d" fill="%s"><title>%s</title></rect>'
-            % (
-                cls,
-                x,
-                T,
-                max(w, 2),
-                ph,
-                f"url(#{hatch})" if cls == "blk-tent" else "currentColor",
-                f"{escape(e['label'])}: {fmt_date(e['start_d'])} to {fmt_date(e['end_d'])}, {e['days_total']:g} days ({e['status']})",
-            )
+        booked = e.status == "booked"
+        fill = "currentColor" if booked else f"url(#{hatch})"
+        title = (
+            f"{escape(e.label)}: {fmt_date(e.start_d)} to {fmt_date(e.end_d)}, "
+            f"{e.days_total:g} days ({e.status})"
         )
-        out.append(fill)
+        out.append(
+            f'<rect class="{"blk-booked" if booked else "blk-tent"}" x="{x:.1f}" y="{T}" '
+            f'width="{max(w, 2):.1f}" height="{ph}" fill="{fill}"><title>{title}</title></rect>'
+        )
 
     # flexed bank holidays: working days, so they must not be mistaken for days off
     for d in sorted(p.flexed):
@@ -160,7 +168,7 @@ def _render(p: Plan, lay: Layout) -> str:
                 ks.update((i, i + 1))
         return " ".join(pt(k, rem[k]) for k in sorted(ks))
 
-    has_tent = any(e["status"] == "tentative" for e in p.entries)
+    has_tent = any(e.status == "tentative" for e in p.entries)
     if has_tent:
         out.append(
             f'<polyline class="plan booked-only" points="{polyline(p.rem_booked, p.used_booked)}"/>'
@@ -180,7 +188,6 @@ def _render(p: Plan, lay: Layout) -> str:
         out.append(
             f'<circle class="dot" cx="{X(kx):.1f}" cy="{Y(p.rem_all[kx]):.1f}" r="4.5"/>'
         )
-    today = date.today()
     if p.start <= today <= p.end:
         kt = p.idx(today)
         out.append(
@@ -205,5 +212,6 @@ def _render(p: Plan, lay: Layout) -> str:
     )
 
 
-def build_chart(p: Plan) -> Markup:
-    return Markup(_render(p, WIDE) + _render(p, COMPACT))
+def build_chart(p: Plan, today: date) -> Markup:
+    """Both layouts of the chart. `today` places the Today marker."""
+    return Markup(_render(p, WIDE, today) + _render(p, COMPACT, today))
